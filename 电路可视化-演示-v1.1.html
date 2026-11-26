@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>电路可视化 · v1.0 演示</title>
+<title>电路可视化 · v1.1 演示</title>
 <style>
   :root{
     --bg:#eef1f6; --panel:#ffffff; --line:#dde4ee; --text:#1b2536; --muted:#6b7a90;
@@ -157,6 +157,17 @@
     .topbar{flex-wrap:wrap; gap:8px;}
     .sep{display:none;}
   }
+   /* 模板库 */
+   .tpl-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:8px;margin-top:8px;}
+   .tpl-card{border:1px solid var(--line);border-radius:10px;padding:8px 10px;display:flex;flex-direction:column;gap:4px;}
+   .tpl-card b{font-size:13px;}
+   .tpl-card span{font-size:11.5px;color:#6b7a90;line-height:1.5;}
+   .tpl-card .btn{align-self:flex-start;padding:3px 12px;font-size:12px;margin-top:2px;}
+   .tpl-del{color:#dc2626;border:none;background:none;cursor:pointer;font-size:12px;align-self:flex-end;padding:2px;}
+   .tpl-row{display:flex;gap:8px;align-items:center;margin-bottom:10px;}
+   .tpl-row input{flex:1;padding:5px 8px;border:1px solid var(--line);border-radius:8px;font-family:inherit;}
+   .modal h3{margin:12px 0 4px;font-size:13px;color:#334155;}
+
    /* 测量工具弹窗 */
    .modal-backdrop{position:fixed;inset:0;background:rgba(15,23,42,.45);display:none;align-items:center;justify-content:center;z-index:60;}
    .modal-backdrop.open{display:flex;}
@@ -178,7 +189,7 @@
 <body>
 <div class="app">
   <header class="topbar">
-    <div class="brand"><h1>电路可视化</h1><span>v1.0</span></div>
+    <div class="brand"><h1>电路可视化</h1><span>v1.1</span></div>
     <div class="spacer"></div>
     <div class="btn-group">
       <button class="btn" id="btnSeries">示例：串联</button>
@@ -224,6 +235,8 @@
       <option value="48">快速</option>
     </select>
     <button class="btn" id="btnScope">示波器</button>
+    <div class="sep"></div>
+    <button class="btn" id="btnTemplates">模板库</button>
     <input type="file" id="fileInput" accept=".json,application/json" hidden>
   </header>
 
@@ -338,6 +351,23 @@
             <div class="tool-fb" id="cvFb" style="white-space:pre-wrap"></div>
             <div class="tool-note" id="cvNote"></div>
           </div>
+        </div>
+      </div>
+
+      <div class="modal-backdrop" id="tplModal">
+        <div class="modal">
+          <div style="display:flex;align-items:center;justify-content:space-between">
+            <h2 style="margin:0;font-size:16px">模板库</h2>
+            <button class="btn" id="tplClose">关闭</button>
+          </div>
+          <div class="tpl-row">
+            <input id="tplName" placeholder="模板名称（保存当前画布用）">
+            <button class="btn" id="tplSave">💾 保存当前画布为模板</button>
+          </div>
+          <h3>内置模板（载入后可随意修改）</h3>
+          <div class="tpl-grid" id="tplBuiltin"></div>
+          <h3>我的模板</h3>
+          <div class="tpl-grid" id="tplUser"></div>
         </div>
       </div>
 
@@ -466,7 +496,7 @@ const DEFS = {
   },
   idealAmmeter: {
     name: '理想电流表', w: 100, h: 56,
-    params: { R: 1e-9 },   // 理想化：内阻为零
+    params: {},   // 真理想：0V 电压源支路（内阻严格为零，电流取自求解向量）
     pins: [{ id: 'a', x: -PIN_X, y: 0 }, { id: 'b', x: PIN_X, y: 0 }]
   },
   galvanometer: {
@@ -481,7 +511,7 @@ const DEFS = {
   },
   idealVoltmeter: {
     name: '理想电压表', w: 100, h: 56,
-    params: { R: 1e12 },   // 理想化：内阻无穷大
+    params: {},   // 真理想：不参与 stamping（对电路零影响，内阻严格无穷大）
     pins: [{ id: 'a', x: -PIN_X, y: 0 }, { id: 'b', x: PIN_X, y: 0 }]
   },
   diode: {
@@ -1347,7 +1377,7 @@ function solvePass(t, dt, simulating) {
   let n = 0;
   for (let i = 0; i < nAll; i++) if (i !== groundIdx) num[i] = n++;
 
-  const sources = comps.filter(c => c.type === 'battery' || c.type === 'acsource');
+  const sources = comps.filter(c => c.type === 'battery' || c.type === 'acsource' || c.type === 'idealAmmeter');
   const m = sources.length;
   const N = n + m;
   const A = Array.from({ length: N }, () => new Array(N).fill(0));
@@ -1385,7 +1415,7 @@ function solvePass(t, dt, simulating) {
       return;
     }
     // 多端/特殊元件单独处理，不能走二端逻辑
-    if (c.type === 'rheostat' || c.type === 'spdt' || c.type === 'dpdt' || c.type === 'motor' || c.type === 'junc' || c.type === 'relay') return;
+    if (c.type === 'rheostat' || c.type === 'spdt' || c.type === 'dpdt' || c.type === 'motor' || c.type === 'junc' || c.type === 'relay' || c.type === 'idealAmmeter') return;
     const na = nodeIdx.get(c.id + ':' + d.pins[0].id);
     const nb = nodeIdx.get(c.id + ':' + d.pins[1].id);
     let g, inj = 0;   // inj：诺顿等效电流源（从 a 注入，抵消导通压降 / 维持电感电流）
@@ -1415,6 +1445,7 @@ function solvePass(t, dt, simulating) {
         } else g = 1e3;
         break;
       }
+      case 'idealVoltmeter': g = 0; break;   // 真理想：不参与 stamping，对电路零影响
       case 'metalwire': case 'thermistor': case 'photoresistor':
         g = 1 / Math.max(1e-6, dynR(c)); break;
       default: g = 1 / Math.max(1e-12, c.params.R);
@@ -1490,16 +1521,24 @@ function solvePass(t, dt, simulating) {
     stampG(nodeIdx.get(c.id + ':com'), nodeIdx.get(c.id + ':' + (on ? 'nc' : 'no')), 1 / 1e12);
   });
 
-  // ---- 电压源：内部正极 → 端子负极 ----
+  // ---- 电压源：内部正极 → 端子负极；理想电流表：0V 源支路 ----
   sources.forEach((c, k) => {
+    const row = n + k;
+    if (c.type === 'idealAmmeter') {
+      // 理想电流表：0V 电压源支路（Va − Vb = 0），支路电流精确取自求解向量
+      const ia = num[nodeIdx.get(c.id + ':a')];
+      const ib = num[nodeIdx.get(c.id + ':b')];
+      if (ia >= 0) { A[row][ia] += 1; A[ia][row] += 1; }
+      if (ib >= 0) { A[row][ib] -= 1; A[ib][row] -= 1; }
+      return;
+    }
     const ia = num[nodeIdx.get(c.id + ':_int')]; // +
     const ib = num[nodeIdx.get(c.id + ':neg')];  // −
-    const row = n + k;
-    if (ia >= 0) { A[row][ia] += 1; A[ia][row] += 1; }
-    if (ib >= 0) { A[row][ib] -= 1; A[ib][row] -= 1; }
     const emf = c.type === 'acsource'
       ? (simulating ? (c.params.amp || 3) * Math.sin(2 * Math.PI * (c.params.freq || 2) * (t || 0)) : 0)
       : c.params.emf;
+    if (ia >= 0) { A[row][ia] += 1; A[ia][row] += 1; }
+    if (ib >= 0) { A[row][ib] -= 1; A[ib][row] -= 1; }
     z[row] += emf;
   });
 
@@ -1601,6 +1640,11 @@ function solvePass(t, dt, simulating) {
     const nb = nodeIdx.get(c.id + ':' + d.pins[1].id);
     const ua = V(na), ub = V(nb);
     const U = ua - ub;
+    if (c.type === 'idealAmmeter') {
+      const k = sources.indexOf(c);
+      compCurrent[c.id] = { U: 0, I: x[n + k], P: 0 };   // 支路电流精确取自求解向量
+      return;
+    }
     let I = 0, P = 0;
     if (c.type === 'battery' || c.type === 'acsource') {
       const k = sources.indexOf(c);
@@ -1609,6 +1653,7 @@ function solvePass(t, dt, simulating) {
     } else {
       let R;
       if (c.type === 'switch') R = c.params.closed ? 1e-3 : 1e12;
+      else if (c.type === 'idealVoltmeter') R = Infinity;   // 真理想：I = U/∞ = 0
       else if (c.type === 'metalwire' || c.type === 'thermistor' || c.type === 'photoresistor') R = dynR(c);
       else R = Math.max(1e-12, c.params.R);
       I = U / R;
@@ -3246,6 +3291,81 @@ $('#btnScope').onclick = () => {
 };
 $('#scopeSel').onchange = () => { sim.scopeSel = $('#scopeSel').value; renderScope(); };
 $('#simSpeed').onchange = () => { sim.steps = parseInt($('#simSpeed').value, 10) || 16; };
+
+/* ---- 模板库 ---- */
+const TEMPLATES = [
+  { id: 'series', name: '串联电路', desc: '电池+开关+灯泡+电阻，入门基线（0.182 A）' },
+  { id: 'parallel', name: '并联电路', desc: '两支路分流：0.279 A + 0.139 A = 0.418 A' },
+  { id: 'divider', name: '分压电路', desc: '滑动变阻器分压接法，滑片可调' },
+  { id: 'selector', name: '切换电路', desc: '单刀双掷选择支路：10Ω / 20Ω 灯' },
+  { id: 'motor', name: '电动机', desc: '非纯电阻：UI = I²R + EI，含启动/发电工况' },
+  { id: 'bridge', name: '惠斯通电桥', desc: '三个 10Ω + 一个 20Ω，调平衡→灵敏电流计读零' },
+  { id: 'cap', name: '电容并联', desc: '稳态隔直流：电流走灯泡，电容充到灯压' },
+  { id: 'relay', name: '温控报警灯', desc: '热敏+继电器：温度拉到约 92℃ 吸合报警' },
+  { id: 'capdischarge', name: '电容充放电', desc: 'SPDT 切换充/放电，电流方向反转（暂态）' },
+  { id: 'inductor', name: '自感现象', desc: '通电 B 灯先亮 A 灯慢亮；断电续流反向（暂态）' },
+  { id: 'acrc', name: '交流 RC', desc: '示波器观察正弦激励与电容电压相位滞后（暂态）' }
+];
+const TPL_KEY = 'circuit-user-templates-v1';
+function userTplList() {
+  try { return JSON.parse(localStorage.getItem(TPL_KEY)) || []; } catch (e) { return []; }
+}
+function userTplWrite(list) {
+  try { localStorage.setItem(TPL_KEY, JSON.stringify(list)); } catch (e) {}
+}
+function renderTplDialog() {
+  const bi = $('#tplBuiltin'); bi.innerHTML = '';
+  TEMPLATES.forEach(t => {
+    const card = document.createElement('div');
+    card.className = 'tpl-card';
+    card.innerHTML = `<b>${t.name}</b><span>${t.desc}</span>`;
+    const btn = document.createElement('button');
+    btn.className = 'btn'; btn.textContent = '载入此模板';
+    btn.onclick = () => { loadPreset(t.id); $('#tplModal').classList.remove('open'); toast('已载入模板：' + t.name); };
+    card.appendChild(btn);
+    bi.appendChild(card);
+  });
+  const uu = $('#tplUser'); uu.innerHTML = '';
+  const list = userTplList();
+  if (!list.length) { uu.innerHTML = '<span style="font-size:12px;color:#9aa8bd">还没有保存的模板——把画布搭好后在上面的输入框命名保存。</span>'; return; }
+  list.forEach((t, i) => {
+    const card = document.createElement('div');
+    card.className = 'tpl-card';
+    card.innerHTML = `<b>${t.name}</b><span>保存于 ${t.time}（${t.n} 个元件 / ${t.w} 条导线）</span>`;
+    const row = document.createElement('div'); row.style.cssText = 'display:flex;gap:6px;align-items:center';
+    const btn = document.createElement('button');
+    btn.className = 'btn'; btn.textContent = '载入';
+    btn.onclick = () => {
+      try {
+        pushHistory();
+        restoreFrom(JSON.stringify({ components: t.data.components, wires: t.data.wires }));
+        $('#tplModal').classList.remove('open');
+        toast('已载入我的模板：' + t.name);
+      } catch (e) { toast('模板数据损坏'); }
+    };
+    const del = document.createElement('button');
+    del.className = 'tpl-del'; del.textContent = '删除';
+    del.onclick = () => {
+      const all = userTplList(); all.splice(i, 1); userTplWrite(all);
+      renderTplDialog(); toast('已删除模板');
+    };
+    row.appendChild(btn); row.appendChild(del);
+    card.appendChild(row);
+    uu.appendChild(card);
+  });
+}
+$('#btnTemplates').onclick = () => { renderTplDialog(); $('#tplModal').classList.add('open'); };
+$('#tplClose').onclick = () => $('#tplModal').classList.remove('open');
+$('#tplSave').onclick = () => {
+  const name = ($('#tplName').value || '').trim() || ('我的模板 ' + new Date().toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }));
+  if (!state.components.length) { toast('画布是空的，先搭一个电路'); return; }
+  const list = userTplList();
+  list.unshift({ name, time: new Date().toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }), n: state.components.length, w: state.wires.length, data: JSON.parse(snapshot()) });
+  userTplWrite(list);
+  $('#tplName').value = '';
+  renderTplDialog();
+  toast('已保存模板：' + name);
+};
 
 /* ============================================================
    8. 启动
