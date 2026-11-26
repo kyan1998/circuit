@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>电路可视化 · v0.7 演示</title>
+<title>电路可视化 · v0.8 演示</title>
 <style>
   :root{
     --bg:#eef1f6; --panel:#ffffff; --line:#dde4ee; --text:#1b2536; --muted:#6b7a90;
@@ -178,7 +178,7 @@
 <body>
 <div class="app">
   <header class="topbar">
-    <div class="brand"><h1>电路可视化</h1><span>v0.7</span></div>
+    <div class="brand"><h1>电路可视化</h1><span>v0.8</span></div>
     <div class="spacer"></div>
     <div class="btn-group">
       <button class="btn" id="btnSeries">示例：串联</button>
@@ -188,6 +188,7 @@
       <button class="btn" id="btnMotor">示例：电动机</button>
       <button class="btn" id="btnBridge">示例：电桥</button>
       <button class="btn" id="btnCap">示例：电容</button>
+      <button class="btn" id="btnRelay">示例：继电器</button>
     </div>
     <div class="sep"></div>
     <div class="btn-group">
@@ -347,6 +348,11 @@ const DEFS = {
     params: { R: 47 },   // 整数步进，0–9999 Ω
     pins: [{ id: 'a', x: -PIN_X, y: 0 }, { id: 'b', x: PIN_X, y: 0 }]
   },
+  metalwire: {
+    name: '金属丝', w: 100, h: 44,
+    params: { mat: '镍铬合金', len: 50, dia: 0.4 },   // 材料长度cm直径mm → R = ρL/S
+    pins: [{ id: 'a', x: -PIN_X, y: 0 }, { id: 'b', x: PIN_X, y: 0 }]
+  },
   bulb: {
     name: '小灯泡', w: 100, h: 44,
     params: { R: 6, ratedU: 1.2, ratedP: 0.25 },
@@ -364,6 +370,14 @@ const DEFS = {
       { id: 'c', x: -PIN_X, y: 0 },   // 公共端（刀）
       { id: 'a', x: PIN_X, y: -22 },  // 触点 A（上）
       { id: 'b', x: PIN_X, y: 22 }    // 触点 B（下）
+    ]
+  },
+  dpdt: {
+    name: '双刀双掷开关', w: 100, h: 62,
+    params: { pos: 'a' },   // 两把刀同步挥向
+    pins: [
+      { id: 'c1', x: -PIN_X, y: -18 }, { id: 'a1', x: PIN_X, y: -28 }, { id: 'b1', x: PIN_X, y: -8 },
+      { id: 'c2', x: -PIN_X, y: 18 }, { id: 'a2', x: PIN_X, y: 8 }, { id: 'b2', x: PIN_X, y: 28 }
     ]
   },
   rheostat: {
@@ -400,6 +414,16 @@ const DEFS = {
     params: { R: 1e12 },   // 理想化：内阻无穷大
     pins: [{ id: 'a', x: -PIN_X, y: 0 }, { id: 'b', x: PIN_X, y: 0 }]
   },
+  diode: {
+    name: '二极管', w: 100, h: 50,
+    params: { vf: 0.7, ron: 5 },   // 导通压降 / 导通电阻（分段线性模型）
+    pins: [{ id: 'a', x: -PIN_X, y: 0 }, { id: 'b', x: PIN_X, y: 0 }]   // a=阳极 b=阴极
+  },
+  led: {
+    name: 'LED', w: 100, h: 50,
+    params: { vf: 2.0, ron: 8 },
+    pins: [{ id: 'a', x: -PIN_X, y: 0 }, { id: 'b', x: PIN_X, y: 0 }]
+  },
   capacitor: {
     name: '电容器', w: 100, h: 56,
     params: { C: 100 },   // 电容（μF）；直流稳态下相当于断路
@@ -408,6 +432,24 @@ const DEFS = {
   motor: {
     name: '电动机', w: 100, h: 56,
     params: { R: 1, back: 2 },   // 电枢电阻 / 反电动势
+    pins: [{ id: 'a', x: -PIN_X, y: 0 }, { id: 'b', x: PIN_X, y: 0 }]
+  },
+  relay: {
+    name: '电磁继电器', w: 110, h: 64,
+    params: { coilR: 200, Ith: 0.05 },   // 线圈电阻 / 吸合电流
+    pins: [
+      { id: 'a', x: -PIN_X, y: -22 }, { id: 'b', x: -PIN_X, y: 22 },   // 线圈
+      { id: 'com', x: PIN_X, y: -22 }, { id: 'nc', x: PIN_X, y: 0 }, { id: 'no', x: PIN_X, y: 22 }  // 触点：公共/常闭/常开
+    ]
+  },
+  thermistor: {
+    name: '热敏电阻', w: 100, h: 44,
+    params: { R25: 100, B: 3950, temp: 25 },   // 25℃ 阻值 / B 值 / 温度滑杆
+    pins: [{ id: 'a', x: -PIN_X, y: 0 }, { id: 'b', x: PIN_X, y: 0 }]
+  },
+  photoresistor: {
+    name: '光敏电阻', w: 100, h: 44,
+    params: { R500: 1000, gamma: 0.7, lux: 500 },   // 500lx 基准阻值 / 伽马 / 光照滑杆
     pins: [{ id: 'a', x: -PIN_X, y: 0 }, { id: 'b', x: PIN_X, y: 0 }]
   },
   junc: {
@@ -623,6 +665,17 @@ function drawBody(c, g, scale = 1) {
       txt(`${Math.round(p.R)} Ω`, 0, -1.5, 10.5, '#1b2536', 'middle', '700');
       break;
     }
+    case 'metalwire': {
+      add('line', { x1: -PIN_X, y1: 0, x2: -22, y2: 0 });
+      add('rect', { x: -22, y: -12, width: 44, height: 24, rx: 3 });
+      for (let i = -18; i <= 14; i += 6)
+        add('line', { x1: i, y1: 12, x2: i + 5, y2: -12, 'stroke-width': 1.1 });
+      add('line', { x1: 22, y1: 0, x2: PIN_X, y2: 0 });
+      g.appendChild(el('rect', { x: -14, y: -4, width: 28, height: 11, fill: '#fff', stroke: 'none' }));
+      const mR = dynR(c);
+      if (mR) txt(`${fmt(mR)} Ω`, 0, 4, 9.5, '#1b2536', 'middle', '600');
+      break;
+    }
     case 'bulb': {
       add('line', { x1: -PIN_X, y1: 0, x2: -16, y2: 0 });
       const glow = el('circle', { cx: 0, cy: 0, r: 30, fill: 'url(#bulbGlow)',
@@ -654,6 +707,22 @@ function drawBody(c, g, scale = 1) {
       // 刀臂：指向当前接通的触点
       add('line', { x1: -14, y1: 0, x2: 12, y2: toA ? -20 : 20, 'stroke-width': 2 });
       if (c.id) txt(toA ? '接 A' : '接 B', 0, 40, 10, '#6b7a90');
+      break;
+    }
+    case 'dpdt': {
+      const toA = p.pos !== 'b';
+      [[-18, -28, -8], [18, 8, 28]].forEach(([cy, ay, by]) => {
+        add('line', { x1: -PIN_X, y1: cy, x2: -14, y2: cy });
+        add('circle', { cx: -14, cy, r: 2.6, fill: '#fff' });
+        add('circle', { cx: 14, cy: toA ? ay : by, r: 2.6, fill: '#dc2626' });
+        add('circle', { cx: 14, cy: toA ? by : ay, r: 2.6, fill: '#fff' });
+        add('line', { x1: 14, y1: ay, x2: PIN_X, y2: ay });
+        add('line', { x1: 14, y1: by, x2: PIN_X, y2: by });
+        add('line', { x1: -14, y1: cy, x2: 12, y2: toA ? ay + 1.5 : by - 1.5, 'stroke-width': 2 });
+      });
+      // 机械联动虚线
+      add('line', { x1: 0, y1: -14, x2: 0, y2: 14, 'stroke-dasharray': '3 3', 'stroke-width': 1.2 });
+      if (c.id) txt(toA ? '接 A' : '接 B', 0, 42, 10, '#6b7a90');
       break;
     }
     case 'rheostat': {
@@ -734,6 +803,26 @@ function drawBody(c, g, scale = 1) {
       }
       break;
     }
+    case 'diode': case 'led': {
+      if (c.type === 'led') {
+        const lr = state.result && state.result.compCurrent[c.id];
+        if (lr && lr.diode && lr.diode.on && lr.I > 0.002) {
+          g.appendChild(el('circle', { cx: 0, cy: 0, r: 26, fill: 'url(#bulbGlow)', class: 'bulb-glow',
+            opacity: Math.min(1, lr.I / 0.02) }));
+        }
+      }
+      add('line', { x1: -PIN_X, y1: 0, x2: -8, y2: 0 });
+      add('path', { d: 'M -8 -9 L -8 9 L 9 0 Z', fill: '#1b2536', stroke: 'none' });
+      add('line', { x1: 9, y1: -9, x2: 9, y2: 9, 'stroke-width': 2.2 });
+      add('line', { x1: 9, y1: 0, x2: PIN_X, y2: 0 });
+      if (c.type === 'led') {
+        add('line', { x1: -2, y1: -14, x2: 5, y2: -21, 'stroke-width': 1.3 });
+        add('path', { d: 'M 6.5 -22 L 2 -21.5 L 5.5 -17.5 Z', fill: '#1b2536', stroke: 'none' });
+        add('line', { x1: 5, y1: -11, x2: 12, y2: -18, 'stroke-width': 1.3 });
+        add('path', { d: 'M 13.5 -19 L 9 -18.5 L 12.5 -14.5 Z', fill: '#1b2536', stroke: 'none' });
+      }
+      break;
+    }
     case 'motor': {
       add('line', { x1: -PIN_X, y1: 0, x2: -19, y2: 0 });
       add('circle', { cx: 0, cy: 0, r: 19, fill: '#fff' });
@@ -750,6 +839,49 @@ function drawBody(c, g, scale = 1) {
       add('line', { x1: 0, y1: 0, x2: 0, y2: -24 });
       add('line', { x1: 0, y1: 0, x2: 0, y2: 24 });
       add('circle', { cx: 0, cy: 0, r: 3.4, fill: '#334155', stroke: 'none' });
+      break;
+    }
+    case 'relay': {
+      const rr = state.result && state.result.compCurrent[c.id];
+      const on = !!(rr && rr.relay && rr.relay.on);
+      add('line', { x1: -PIN_X, y1: -22, x2: -8, y2: -22 });
+      add('line', { x1: -PIN_X, y1: 22, x2: -8, y2: 22 });
+      add('rect', { x: -8, y: -22, width: 16, height: 44 });
+      add('line', { x1: 8, y1: 0, x2: 14, y2: 0, 'stroke-dasharray': '3 3', 'stroke-width': 1.2 });
+      add('line', { x1: PIN_X, y1: -22, x2: 16, y2: -22 });
+      add('line', { x1: PIN_X, y1: 0, x2: 16, y2: 0 });
+      add('line', { x1: PIN_X, y1: 22, x2: 16, y2: 22 });
+      add('circle', { cx: 16, cy: -22, r: 2.6, fill: '#fff' });
+      add('circle', { cx: 16, cy: 0, r: 2.6, fill: on ? '#fff' : '#dc2626' });
+      add('circle', { cx: 16, cy: 22, r: 2.6, fill: on ? '#dc2626' : '#fff' });
+      add('line', { x1: 16, y1: -22, x2: 14, y2: on ? 20 : 2, 'stroke-width': 2 });
+      if (c.id) txt(on ? '吸合' : '释放', 0, 40, 10, on ? '#dc2626' : '#6b7a90');
+      break;
+    }
+    case 'thermistor': {
+      add('line', { x1: -PIN_X, y1: 0, x2: -22, y2: 0 });
+      add('rect', { x: -22, y: -11, width: 44, height: 22, rx: 1 });
+      add('line', { x1: 22, y1: 0, x2: PIN_X, y2: 0 });
+      add('line', { x1: -26, y1: 20, x2: 26, y2: -20, 'stroke-width': 1.3 });
+      txt('θ', 27, -18, 10, '#1b2536');
+      g.appendChild(el('rect', { x: -14, y: -4, width: 28, height: 11, fill: '#fff', stroke: 'none' }));
+      const tR = dynR(c);
+      if (tR) txt(`${fmt(tR)} Ω`, 0, 4, 9.5, '#1b2536', 'middle', '600');
+      break;
+    }
+    case 'photoresistor': {
+      if (c.id) {
+        const pR = dynR(c);
+        if (pR) txt(`${fmt(pR)} Ω`, 0, 34, 9.5, '#1b2536', 'middle', '600');
+      }
+      add('line', { x1: -PIN_X, y1: 0, x2: -13, y2: 0 });
+      add('rect', { x: -13, y: -9, width: 26, height: 18, rx: 1 });
+      add('line', { x1: 13, y1: 0, x2: PIN_X, y2: 0 });
+      add('circle', { cx: 0, cy: 0, r: 19 });
+      add('line', { x1: -16, y1: -26, x2: -6, y2: -16, 'stroke-width': 1.3 });
+      add('path', { d: 'M -4.5 -14 L -9.5 -15.5 L -5.5 -19 Z', fill: '#1b2536', stroke: 'none' });
+      add('line', { x1: -6, y1: -30, x2: 4, y2: -20, 'stroke-width': 1.3 });
+      add('path', { d: 'M 5.5 -18.5 L 0.5 -20 L 4.5 -24 Z', fill: '#1b2536', stroke: 'none' });
       break;
     }
     case 'capacitor': {
@@ -1055,7 +1187,48 @@ function luSolve(A, z) {
   return x;
 }
 
+// 动态阻值：金属丝 / 热敏电阻 / 光敏电阻（阻值由参数即时算出）
+const RHO = { '镍铬合金': 1.1e-6, '铁': 1.0e-7, '铜': 1.7e-8, '康铜': 4.9e-7 };
+function dynR(c) {
+  const p = c.params;
+  if (c.type === 'metalwire') {
+    const S = Math.PI * Math.pow((p.dia || 0.4) / 2000, 2);
+    return Math.max(1e-4, (RHO[p.mat] || 1.1e-6) * (p.len || 50) / 100 / S);
+  }
+  if (c.type === 'thermistor') {
+    const Tk = (p.temp || 25) + 273.15;
+    return Math.max(0.1, Math.min(5e6, (p.R25 || 100) * Math.exp((p.B || 3950) * (1 / Tk - 1 / 298.15))));
+  }
+  if (c.type === 'photoresistor') {
+    const lux = Math.max(1, p.lux || 500);
+    return Math.max(10, Math.min(2e5, (p.R500 || 1000) * Math.pow(500 / lux, p.gamma || 0.7)));
+  }
+  return null;
+}
+
 function solve() {
+  // 非线性元件（二极管 / 电磁继电器）状态迭代：整网反复求解直到状态稳定
+  const comps0 = state.components;
+  if (!comps0.length) { state.result = null; return; }
+  const nl = comps0.filter(c => c.type === 'diode' || c.type === 'led' || c.type === 'relay');
+  nl.forEach(c => { if (c._nl === undefined) c._nl = (c.type === 'relay' ? false : true); });
+  for (let i = 0; i < 12; i++) {
+    solvePass();
+    if (!state.result) return;
+    let changed = false;
+    nl.forEach(c => {
+      const r = state.result.compCurrent[c.id];
+      if (!r) return;
+      // 状态判据：二极管 U ≥ 导通压降则导通；继电器线圈电流 ≥ 吸合值则吸合
+      const s = c.type === 'relay' ? Math.abs(r.I) >= c.params.Ith : r.U >= (Number(c.params.vf) || 0.7) - 1e-9;
+      if (s !== c._nl) { c._nl = s; changed = true; }
+    });
+    if (!changed) break;
+  }
+  solvePass();   // 按最终状态再解一遍，保证读数一致
+}
+
+function solvePass() {
   const comps = state.components;
   if (!comps.length) { state.result = null; return; }
 
@@ -1121,15 +1294,26 @@ function solve() {
       return;
     }
     // 多端/特殊元件单独处理，不能走二端逻辑
-    if (c.type === 'rheostat' || c.type === 'spdt' || c.type === 'motor' || c.type === 'junc' || c.type === 'capacitor') return;
+    if (c.type === 'rheostat' || c.type === 'spdt' || c.type === 'dpdt' || c.type === 'motor' || c.type === 'junc' || c.type === 'capacitor' || c.type === 'relay') return;
     const na = nodeIdx.get(c.id + ':' + d.pins[0].id);
     const nb = nodeIdx.get(c.id + ':' + d.pins[1].id);
-    let g;
+    let g, inj = 0;   // inj：诺顿等效电流源（从 a 注入，抵消导通压降）
     switch (c.type) {
       case 'switch': g = 1 / (c.params.closed ? 1e-3 : 1e12); break;
+      case 'diode': case 'led': {
+        // 分段线性：导通时 ron 串 vf（用诺顿等效参与求解），截止时近似开路
+        const ron = Math.max(0.1, Number(c.params.ron) || 5);
+        const vf = Number(c.params.vf) || 0.7;
+        if (c._nl) { g = 1 / ron; inj = vf / ron; }
+        else g = 1e-10;
+        break;
+      }
+      case 'metalwire': case 'thermistor': case 'photoresistor':
+        g = 1 / Math.max(1e-6, dynR(c)); break;
       default: g = 1 / Math.max(1e-12, c.params.R);
     }
     stampG(na, nb, g);
+    if (inj) { const ia = num[na], ib = num[nb]; if (ia >= 0) z[ia] += inj; if (ib >= 0) z[ib] -= inj; }
   });
 
   // ---- 三端元件：滑动变阻器 = 两个串联电阻共用 P 点 ----
@@ -1179,6 +1363,26 @@ function solve() {
     });
   });
 
+  // ---- 双刀双掷开关：两把刀同步切换 ----
+  comps.forEach(c => {
+    if (c.type !== 'dpdt') return;
+    const onId = c.params.pos === 'b' ? 'b' : 'a';
+    const offId = onId === 'a' ? 'b' : 'a';
+    for (const no of ['1', '2']) {
+      stampG(nodeIdx.get(c.id + ':c' + no), nodeIdx.get(c.id + ':' + onId + no), 1 / 1e-3);
+      stampG(nodeIdx.get(c.id + ':c' + no), nodeIdx.get(c.id + ':' + offId + no), 1 / 1e12);
+    }
+  });
+
+  // ---- 电磁继电器：线圈 = 电阻；触点由线圈电流是否达到吸合值决定（外层迭代收敛）----
+  comps.forEach(c => {
+    if (c.type !== 'relay') return;
+    const on = !!c._nl;
+    stampG(nodeIdx.get(c.id + ':a'), nodeIdx.get(c.id + ':b'), 1 / Math.max(1e-9, c.params.coilR));
+    stampG(nodeIdx.get(c.id + ':com'), nodeIdx.get(c.id + ':' + (on ? 'no' : 'nc')), 1 / 1e-3);
+    stampG(nodeIdx.get(c.id + ':com'), nodeIdx.get(c.id + ':' + (on ? 'nc' : 'no')), 1 / 1e12);
+  });
+
   // ---- 电压源：内部正极 → 端子负极 ----
   sources.forEach((c, k) => {
     const ia = num[nodeIdx.get(c.id + ':_int')]; // +
@@ -1203,9 +1407,30 @@ function solve() {
       compCurrent[c.id] = { U, I: 0, P: 0, cap: { cF, q: cF * U, e: 0.5 * cF * U * U } };
       return;
     }
+    // 二极管 / LED：分段线性电流
+    if (c.type === 'diode' || c.type === 'led') {
+      const nA = nodeIdx.get(c.id + ':a');
+      const nB = nodeIdx.get(c.id + ':b');
+      const U = V(nA) - V(nB);
+      const ron = Math.max(0.1, Number(c.params.ron) || 5);
+      const I = c._nl ? (U - (Number(c.params.vf) || 0.7)) / ron : U * 1e-10;
+      compCurrent[c.id] = { U, I, P: U * I, diode: { on: !!c._nl, vf: Number(c.params.vf) || 0.7, ron } };
+      return;
+    }
     // 导线节点：纯连接件，不进读数表
     if (c.type === 'junc') {
       compCurrent[c.id] = { U: 0, I: 0, P: 0 };
+      return;
+    }
+    // 电磁继电器：读数取线圈；触点通断见 relay.on
+    if (c.type === 'relay') {
+      const Uc = V(nodeIdx.get(c.id + ':a')) - V(nodeIdx.get(c.id + ':b'));
+      const Ic = Uc / Math.max(1e-9, c.params.coilR);
+      const on = !!c._nl;
+      const iC = on
+        ? (V(nodeIdx.get(c.id + ':com')) - V(nodeIdx.get(c.id + ':no'))) / 1e-3
+        : (V(nodeIdx.get(c.id + ':com')) - V(nodeIdx.get(c.id + ':nc'))) / 1e12;
+      compCurrent[c.id] = { U: Uc, I: Ic, P: Uc * Ic, relay: { on, iContact: iC } };
       return;
     }
     // 电动机：I = (U − E)/R，非纯电阻（UI = I²R + EI）
@@ -1265,6 +1490,7 @@ function solve() {
     } else {
       let R;
       if (c.type === 'switch') R = c.params.closed ? 1e-3 : 1e12;
+      else if (c.type === 'metalwire' || c.type === 'thermistor' || c.type === 'photoresistor') R = dynR(c);
       else R = Math.max(1e-12, c.params.R);
       I = U / R;
       P = U * I;
@@ -1295,6 +1521,14 @@ const PARAM_UI = {
   ],
   resistor: [{ key: 'R', label: '阻值', unit: 'Ω', min: 0.1, max: 1000, step: 0.1 }],
   resbox: [{ key: 'R', label: '阻值', unit: 'Ω', min: 0, max: 9999, step: 1 }],
+  diode: [
+    { key: 'vf', label: '导通压降', unit: 'V', min: 0.1, max: 3, step: 0.1 },
+    { key: 'ron', label: '导通电阻', unit: 'Ω', min: 1, max: 50, step: 1 }
+  ],
+  led: [
+    { key: 'vf', label: '导通压降', unit: 'V', min: 0.5, max: 3.5, step: 0.1 },
+    { key: 'ron', label: '导通电阻', unit: 'Ω', min: 1, max: 50, step: 1 }
+  ],
   bulb: [
     { key: 'R', label: '电阻', unit: 'Ω', min: 0.1, max: 200, step: 0.1 },
     { key: 'ratedP', label: '额定功率', unit: 'W', min: 0.05, max: 20, step: 0.05 }
@@ -1372,6 +1606,50 @@ function renderPanel() {
       ${c.type === 'idealAmmeter'
         ? '内阻：<b>0 Ω</b>（理想电流表，串联不分压，读数即支路电流）'
         : '内阻：<b>∞</b>（理想电压表，并联不分流，读数即被测电压）'}</div>`;
+  } else if (c.type === 'metalwire') {
+    html += `
+      <div class="prop-row"><label>材料</label>
+        <select id="mwMat" style="flex:1;padding:4px 6px;border:1px solid var(--line);border-radius:8px;font-family:inherit">
+          ${Object.keys(RHO).map(m => `<option ${c.params.mat === m ? 'selected' : ''}>${m}</option>`).join('')}
+        </select></div>
+      <div class="prop-row"><label>长度</label>
+        <input type="number" id="mwLen" value="${c.params.len}" min="10" max="100" step="1">
+        <span style="font-size:11px;color:#9aa8bd;width:18px">cm</span></div>
+      <div class="prop-row"><label>直径</label>
+        <input type="number" id="mwDia" value="${c.params.dia}" min="0.1" max="2" step="0.05">
+        <span style="font-size:11px;color:#9aa8bd;width:18px">mm</span></div>
+      <div style="font-size:12px;color:#1b2536;margin-top:4px">电阻 R = ρL/S = <b id="mwR">${fmt(dynR(c))} Ω</b></div>`;
+  } else if (c.type === 'thermistor') {
+    html += `
+      <div class="prop-row"><label>25℃阻值</label>
+        <input type="number" id="thR25" value="${c.params.R25}" min="10" max="2000" step="10">
+        <span style="font-size:11px;color:#9aa8bd;width:18px">Ω</span></div>
+      <div class="prop-row"><label>温度</label>
+        <input type="range" id="thTemp" min="0" max="100" step="1" value="${c.params.temp}">
+        <span id="thTempL" style="font-size:11.5px;color:#1b2536;width:38px;text-align:right">${c.params.temp}℃</span></div>
+      <div style="font-size:12px;color:#1b2536;margin-top:4px">当前阻值：<b id="thR">${fmt(dynR(c))} Ω</b></div>
+      <div style="font-size:11.5px;color:#9aa8bd;margin-top:2px">温度越高，阻值越小（NTC 负温度系数）</div>`;
+  } else if (c.type === 'photoresistor') {
+    html += `
+      <div class="prop-row"><label>500lx 阻值</label>
+        <input type="number" id="phR500" value="${c.params.R500}" min="100" max="10000" step="100">
+        <span style="font-size:11px;color:#9aa8bd;width:18px">Ω</span></div>
+      <div class="prop-row"><label>光照</label>
+        <input type="range" id="phLux" min="1" max="1000" step="1" value="${c.params.lux}">
+        <span id="phLuxL" style="font-size:11.5px;color:#1b2536;width:44px;text-align:right">${c.params.lux}lx</span></div>
+      <div style="font-size:12px;color:#1b2536;margin-top:4px">当前阻值：<b id="phR">${fmt(dynR(c))} Ω</b></div>
+      <div style="font-size:11.5px;color:#9aa8bd;margin-top:2px">光照越强，阻值越小</div>`;
+  } else if (c.type === 'relay') {
+    const rr = state.result && state.result.compCurrent[c.id];
+    const on = !!(rr && rr.relay && rr.relay.on);
+    html += `
+      <div class="prop-row"><label>线圈电阻</label>
+        <input type="number" id="rlCoil" value="${c.params.coilR}" min="20" max="1000" step="5">
+        <span style="font-size:11px;color:#9aa8bd;width:18px">Ω</span></div>
+      <div class="prop-row"><label>吸合电流</label>
+        <input type="number" id="rlIth" value="${c.params.Ith}" min="0.01" max="0.5" step="0.01">
+        <span style="font-size:11px;color:#9aa8bd;width:24px">A</span></div>
+      <div style="font-size:12px;color:#1b2536;margin-top:4px">线圈电流：<b id="rlI">${rr ? fmt(Math.abs(rr.I)) : '—'} A</b> → 触点<b id="rlSt">${on ? '吸合（com→no）' : '释放（com→nc）'}</b></div>`;
   } else if (c.type === 'motor') {
     html += `
       <div class="prop-row"><label>电枢电阻</label>
@@ -1484,6 +1762,100 @@ function renderPanel() {
         syncCap();
       };
     }
+  } else if (c.type === 'metalwire') {
+    const syncMw = () => { const e = $('#mwR'); if (e) e.textContent = fmt(dynR(c)) + ' Ω'; };
+    const bindMw = (sel, key, lo, hi) => {
+      const inp = $(sel); if (!inp) return;
+      let touched = false;
+      inp.onfocus = () => { touched = false; };
+      inp.oninput = () => {
+        const v = parseFloat(inp.value);
+        if (!isFinite(v)) return;
+        if (!touched) { pushHistory(); touched = true; }
+        c.params[key] = clamp(v, lo, hi);
+        solve(); renderAll(); renderTable(); renderDiag(); syncMw();
+      };
+    };
+    const mat = $('#mwMat');
+    if (mat) mat.onchange = () => { pushHistory(); c.params.mat = mat.value; solve(); renderAll(); renderTable(); renderDiag(); syncMw(); };
+    bindMw('#mwLen', 'len', 10, 100);
+    bindMw('#mwDia', 'dia', 0.1, 2);
+  } else if (c.type === 'thermistor') {
+    const syncTh = () => {
+      const r = $('#thR'), l = $('#thTempL');
+      if (r) r.textContent = fmt(dynR(c)) + ' Ω';
+      if (l) l.textContent = c.params.temp + '℃';
+    };
+    const rin = $('#thR25');
+    if (rin) {
+      let touched = false;
+      rin.onfocus = () => { touched = false; };
+      rin.oninput = () => {
+        const v = parseFloat(rin.value);
+        if (!isFinite(v)) return;
+        if (!touched) { pushHistory(); touched = true; }
+        c.params.R25 = clamp(v, 10, 2000);
+        solve(); renderAll(); renderTable(); renderDiag(); syncTh();
+      };
+    }
+    const rng = $('#thTemp');
+    if (rng) {
+      let touched = false;
+      rng.onpointerdown = () => { touched = false; };
+      rng.oninput = () => {
+        if (!touched) { pushHistory(); touched = true; }
+        c.params.temp = clamp(parseFloat(rng.value), 0, 100);
+        solve(); renderAll(); renderTable(); renderDiag(); syncTh();
+      };
+    }
+  } else if (c.type === 'photoresistor') {
+    const syncPh = () => {
+      const r = $('#phR'), l = $('#phLuxL');
+      if (r) r.textContent = fmt(dynR(c)) + ' Ω';
+      if (l) l.textContent = c.params.lux + 'lx';
+    };
+    const rin = $('#phR500');
+    if (rin) {
+      let touched = false;
+      rin.onfocus = () => { touched = false; };
+      rin.oninput = () => {
+        const v = parseFloat(rin.value);
+        if (!isFinite(v)) return;
+        if (!touched) { pushHistory(); touched = true; }
+        c.params.R500 = clamp(v, 100, 10000);
+        solve(); renderAll(); renderTable(); renderDiag(); syncPh();
+      };
+    }
+    const rng = $('#phLux');
+    if (rng) {
+      let touched = false;
+      rng.onpointerdown = () => { touched = false; };
+      rng.oninput = () => {
+        if (!touched) { pushHistory(); touched = true; }
+        c.params.lux = clamp(parseFloat(rng.value), 1, 1000);
+        solve(); renderAll(); renderTable(); renderDiag(); syncPh();
+      };
+    }
+  } else if (c.type === 'relay') {
+    const syncRl = () => {
+      const iEl = $('#rlI'), sEl = $('#rlSt');
+      const r = state.result && state.result.compCurrent[c.id];
+      if (iEl && r) iEl.textContent = fmt(Math.abs(r.I));
+      if (sEl) sEl.textContent = (r && r.relay && r.relay.on) ? '吸合（com→no）' : '释放（com→nc）';
+    };
+    [['#rlCoil', 'coilR', 20, 1000], ['#rlIth', 'Ith', 0.01, 0.5]].forEach(([sel, key, lo, hi]) => {
+      const inp = $(sel); if (!inp) return;
+      let touched = false;
+      inp.onfocus = () => { touched = false; };
+      inp.oninput = () => {
+        const v = parseFloat(inp.value);
+        if (!isFinite(v)) return;
+        if (!touched) { pushHistory(); touched = true; }
+        c.params[key] = clamp(v, lo, hi);
+        solve(); renderAll(); renderTable(); renderDiag(); syncRl();
+      };
+    });
+    syncRl();
   } else if (c.type === 'motor') {
     const syncMotor = () => {
       const box = $('#motInfo');
@@ -1586,9 +1958,18 @@ function renderDiag() {
       items.push({ t: 'err', m: '⚠ 电流过大，请检查是否短路。' });
     } else if (maxI < 1e-6) {
       const hasCap = comps.some(x => x.type === 'capacitor');
-      items.push(hasCap
-        ? { t: 'info', m: '电容器充电完毕后隔断直流，稳态电流为 0（这是电容器的特性，不是故障）。' }
-        : { t: 'err', m: '电路断路：没有形成闭合回路，或开关处于断开状态。' });
+      const diodeOff = comps.some(x => {
+        if (x.type !== 'diode' && x.type !== 'led') return false;
+        const rr = state.result && state.result.compCurrent[x.id];
+        return rr && rr.diode && !rr.diode.on && rr.U < -0.3;
+      });
+      if (hasCap) {
+        items.push({ t: 'info', m: '电容器充电完毕后隔断直流，稳态电流为 0（这是电容器的特性，不是故障）。' });
+      } else if (diodeOff) {
+        items.push({ t: 'info', m: '二极管反向截止（单向导电性）：电流无法通过，试试把二极管换个方向。' });
+      } else {
+        items.push({ t: 'err', m: '电路断路：没有形成闭合回路，或开关处于断开状态。' });
+      }
     } else {
       items.push({ t: 'ok', m: `回路正常，干路电流 ${fmt(maxI)} A。` });
     }
@@ -1852,6 +2233,13 @@ window.addEventListener('pointerup', evt => {
         refresh();
         return;
       }
+      if (c && c.type === 'dpdt') {
+        pushHistory();
+        c.params.pos = c.params.pos === 'b' ? 'a' : 'b';
+        toast(c.params.pos === 'a' ? '双刀掷向 A' : '双刀掷向 B');
+        refresh();
+        return;
+      }
     }
     refresh();
     return;
@@ -1945,6 +2333,7 @@ $('#btnSelector').onclick = () => loadPreset('selector');
 $('#btnMotor').onclick = () => loadPreset('motor');
 $('#btnBridge').onclick = () => loadPreset('bridge');
 $('#btnCap').onclick = () => loadPreset('cap');
+$('#btnRelay').onclick = () => loadPreset('relay');
 $('#btnUndo').onclick = doUndo;
 $('#btnRedo').onclick = doRedo;
 $('#btnSave').onclick = saveCircuit;
@@ -2084,6 +2473,27 @@ function loadPreset(name, record = true) {
     link(n2, 's', bat, 'neg', [{ x: 800, y: 600 }, { x: 295, y: 600 }]);
     link(bat, 'pos', sw, 'a', [{ x: 205, y: 420 }, { x: 405, y: 420 }]);
     state.selected = cap.id;
+  }
+
+  // 温控报警灯：温度升高 → 热敏电阻阻值下降 → 线圈电流增大 → 继电器吸合 → 报警灯亮
+  // 面板把热敏电阻温度拉到约 90℃ 以上即可看到吸合
+  if (name === 'relay') {
+    const bat2 = add('battery', 900, 180, { emf: 3 });
+    const bulb = add('bulb', 300, 180, { R: 6 });
+    const rl = add('relay', 600, 430, { coilR: 50, Ith: 0.05 });
+    const bat1 = add('battery', 300, 600, { emf: 3 });
+    const sw = add('switch', 450, 600);
+    const th = add('thermistor', 650, 600, { R25: 100, B: 3950, temp: 25 });
+    // 负载回路（上）：电池 → com → no → 灯 → 回电池
+    link(bat2, 'pos', rl, 'com', [{ x: 855, y: 120 }, { x: 740, y: 120 }, { x: 740, y: 408 }, { x: 645, y: 408 }]);
+    link(rl, 'no', bulb, 'a', [{ x: 645, y: 520 }, { x: 400, y: 520 }, { x: 400, y: 180 }]);
+    link(bulb, 'b', bat2, 'neg', [{ x: 345, y: 60 }, { x: 945, y: 60 }]);
+    // 控制回路（下）：电池 → 开关 → 热敏 → 线圈 → 回电池
+    link(bat1, 'pos', sw, 'a', [{ x: 255, y: 540 }, { x: 405, y: 540 }]);
+    link(sw, 'b', th, 'a');
+    link(th, 'b', rl, 'a', [{ x: 695, y: 660 }, { x: 410, y: 660 }, { x: 410, y: 340 }, { x: 555, y: 340 }]);
+    link(rl, 'b', bat1, 'neg', [{ x: 500, y: 452 }, { x: 500, y: 560 }, { x: 345, y: 560 }]);
+    state.selected = rl.id;
   }
 
   refresh();
