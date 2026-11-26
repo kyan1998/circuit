@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>电路可视化 · v1.1 演示</title>
+<title>电路可视化 · v1.2 演示</title>
 <style>
   :root{
     --bg:#eef1f6; --panel:#ffffff; --line:#dde4ee; --text:#1b2536; --muted:#6b7a90;
@@ -163,7 +163,9 @@
    .tpl-card b{font-size:13px;}
    .tpl-card span{font-size:11.5px;color:#6b7a90;line-height:1.5;}
    .tpl-card .btn{align-self:flex-start;padding:3px 12px;font-size:12px;margin-top:2px;}
-   .tpl-del{color:#dc2626;border:none;background:none;cursor:pointer;font-size:12px;align-self:flex-end;padding:2px;}
+   .tpl-del{color:#dc2626;border:1px solid #f3c1c1;background:#fef2f2;cursor:pointer;font-size:12px;border-radius:6px;padding:3px 10px;}
+   .tpl-hidden{opacity:.55;}
+   .tpl-hidden .btn{background:#f1f5f9;}
    .tpl-row{display:flex;gap:8px;align-items:center;margin-bottom:10px;}
    .tpl-row input{flex:1;padding:5px 8px;border:1px solid var(--line);border-radius:8px;font-family:inherit;}
    .modal h3{margin:12px 0 4px;font-size:13px;color:#334155;}
@@ -189,7 +191,7 @@
 <body>
 <div class="app">
   <header class="topbar">
-    <div class="brand"><h1>电路可视化</h1><span>v1.1</span></div>
+    <div class="brand"><h1>电路可视化</h1><span>v1.2</span></div>
     <div class="spacer"></div>
     <div class="btn-group">
       <button class="btn" id="btnSeries">示例：串联</button>
@@ -363,6 +365,7 @@
           <div class="tpl-row">
             <input id="tplName" placeholder="模板名称（保存当前画布用）">
             <button class="btn" id="tplSave">💾 保存当前画布为模板</button>
+            <button class="btn" id="tplManage">管理模板</button>
           </div>
           <h3>内置模板（载入后可随意修改）</h3>
           <div class="tpl-grid" id="tplBuiltin"></div>
@@ -3313,15 +3316,38 @@ function userTplList() {
 function userTplWrite(list) {
   try { localStorage.setItem(TPL_KEY, JSON.stringify(list)); } catch (e) {}
 }
+const TPL_HIDE_KEY = 'circuit-tpl-hidden-v1';
+function tplHiddenList() {
+  try { return JSON.parse(localStorage.getItem(TPL_HIDE_KEY)) || []; } catch (e) { return []; }
+}
+function tplHiddenWrite(list) {
+  try { localStorage.setItem(TPL_HIDE_KEY, JSON.stringify(list)); } catch (e) {}
+}
+let tplManage = false;
 function renderTplDialog() {
+  const hidden = tplHiddenList();
   const bi = $('#tplBuiltin'); bi.innerHTML = '';
   TEMPLATES.forEach(t => {
+    const isHidden = hidden.includes(t.id);
+    if (isHidden && !tplManage) return;   // 普通模式下隐藏的内置模板不显示
     const card = document.createElement('div');
-    card.className = 'tpl-card';
-    card.innerHTML = `<b>${t.name}</b><span>${t.desc}</span>`;
+    card.className = 'tpl-card' + (isHidden ? ' tpl-hidden' : '');
+    card.innerHTML = `<b>${t.name}${isHidden ? '（已隐藏）' : ''}</b><span>${t.desc}</span>`;
     const btn = document.createElement('button');
-    btn.className = 'btn'; btn.textContent = '载入此模板';
-    btn.onclick = () => { loadPreset(t.id); $('#tplModal').classList.remove('open'); toast('已载入模板：' + t.name); };
+    btn.className = 'btn';
+    if (tplManage) {
+      btn.textContent = isHidden ? '恢复显示' : '隐藏（不删除）';
+      btn.onclick = () => {
+        const h = tplHiddenList();
+        if (isHidden) { const i = h.indexOf(t.id); if (i >= 0) h.splice(i, 1); }
+        else h.push(t.id);
+        tplHiddenWrite(h);
+        renderTplDialog();
+      };
+    } else {
+      btn.textContent = '载入此模板';
+      btn.onclick = () => { loadPreset(t.id); $('#tplModal').classList.remove('open'); toast('已载入模板：' + t.name); };
+    }
     card.appendChild(btn);
     bi.appendChild(card);
   });
@@ -3346,8 +3372,9 @@ function renderTplDialog() {
     const del = document.createElement('button');
     del.className = 'tpl-del'; del.textContent = '删除';
     del.onclick = () => {
+      if (!confirm('确定删除模板「' + t.name + '」？此操作不可撤销。')) return;
       const all = userTplList(); all.splice(i, 1); userTplWrite(all);
-      renderTplDialog(); toast('已删除模板');
+      renderTplDialog(); toast('已删除模板：' + t.name);
     };
     row.appendChild(btn); row.appendChild(del);
     card.appendChild(row);
@@ -3355,6 +3382,7 @@ function renderTplDialog() {
   });
 }
 $('#btnTemplates').onclick = () => { renderTplDialog(); $('#tplModal').classList.add('open'); };
+$('#tplManage').onclick = () => { tplManage = !tplManage; $('#tplManage').textContent = tplManage ? '完成管理' : '管理模板'; renderTplDialog(); };
 $('#tplClose').onclick = () => $('#tplModal').classList.remove('open');
 $('#tplSave').onclick = () => {
   const name = ($('#tplName').value || '').trim() || ('我的模板 ' + new Date().toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }));
