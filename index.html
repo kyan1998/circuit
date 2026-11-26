@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>电路可视化 · v0.9 演示</title>
+<title>电路可视化 · v1.0 演示</title>
 <style>
   :root{
     --bg:#eef1f6; --panel:#ffffff; --line:#dde4ee; --text:#1b2536; --muted:#6b7a90;
@@ -178,7 +178,7 @@
 <body>
 <div class="app">
   <header class="topbar">
-    <div class="brand"><h1>电路可视化</h1><span>v0.9</span></div>
+    <div class="brand"><h1>电路可视化</h1><span>v1.0</span></div>
     <div class="spacer"></div>
     <div class="btn-group">
       <button class="btn" id="btnSeries">示例：串联</button>
@@ -189,6 +189,9 @@
       <button class="btn" id="btnBridge">示例：电桥</button>
       <button class="btn" id="btnCap">示例：电容</button>
       <button class="btn" id="btnRelay">示例：继电器</button>
+      <button class="btn" id="btnCapDis">示例：充放电</button>
+      <button class="btn" id="btnInd">示例：自感</button>
+      <button class="btn" id="btnAC">示例：交流RC</button>
     </div>
     <div class="sep"></div>
     <div class="btn-group">
@@ -211,6 +214,16 @@
     </div>
     <div class="sep"></div>
     <button class="btn" id="btnTools">测量工具</button>
+    <div class="sep"></div>
+    <button class="btn" id="btnSim">▶ 暂态仿真</button>
+    <button class="btn" id="btnSimReset">仿真重置</button>
+    <span id="simTime" style="font-size:12px;color:#6b7a90;align-self:center">t = 0.000 s</span>
+    <select id="simSpeed" style="padding:4px 6px;border:1px solid var(--line);border-radius:8px;font-family:inherit">
+      <option value="6">慢速</option>
+      <option value="16" selected>常速</option>
+      <option value="48">快速</option>
+    </select>
+    <button class="btn" id="btnScope">示波器</button>
     <input type="file" id="fileInput" accept=".json,application/json" hidden>
   </header>
 
@@ -327,6 +340,15 @@
           </div>
         </div>
       </div>
+
+      <div id="scopePanel" style="display:none;position:absolute;left:0;right:0;bottom:0;height:190px;background:#0b1220;border-top:2px solid var(--accent);z-index:30;">
+        <div style="display:flex;gap:10px;align-items:center;padding:5px 10px;">
+          <span style="font-size:12px;color:#94a3b8">示波器（暂态仿真时自动记录）：</span>
+          <select id="scopeSel" style="flex:1;padding:4px 6px;border:1px solid #334155;border-radius:8px;background:#1e293b;color:#e2e8f0;font-family:inherit"></select>
+          <span id="scopeInfo" style="font-size:12px;color:#94a3b8"></span>
+        </div>
+        <canvas id="scopeCanvas" height="140" style="width:100%;height:140px;display:block"></canvas>
+      </div>
     </section>
 
     <aside class="side">
@@ -379,6 +401,11 @@ const DEFS = {
   battery: {
     name: '电池', w: 100, h: 60,
     params: { emf: 3.0, r: 0.5 },
+    pins: [{ id: 'pos', x: -PIN_X, y: 0 }, { id: 'neg', x: PIN_X, y: 0 }]
+  },
+  acsource: {
+    name: '交流电源', w: 100, h: 56,
+    params: { amp: 3, freq: 2, r: 0.5 },   // 峰值 / 频率 / 内阻
     pins: [{ id: 'pos', x: -PIN_X, y: 0 }, { id: 'neg', x: PIN_X, y: 0 }]
   },
   resistor: {
@@ -470,6 +497,11 @@ const DEFS = {
   capacitor: {
     name: '电容器', w: 100, h: 56,
     params: { C: 100 },   // 电容（μF）；直流稳态下相当于断路
+    pins: [{ id: 'a', x: -PIN_X, y: 0 }, { id: 'b', x: PIN_X, y: 0 }]
+  },
+  inductor: {
+    name: '电感线圈', w: 100, h: 44,
+    params: { L: 1 },   // 自感系数（H）；直流稳态下相当于短路
     pins: [{ id: 'a', x: -PIN_X, y: 0 }, { id: 'b', x: PIN_X, y: 0 }]
   },
   motor: {
@@ -691,6 +723,15 @@ function drawBody(c, g, scale = 1) {
       txt(`${p.emf} V`, 0, 34, 10.5, '#6b7a90');
       break;
     }
+    case 'acsource': {
+      // GB/T：圆圈内正弦波
+      add('line', { x1: -PIN_X, y1: 0, x2: -19, y2: 0 });
+      add('circle', { cx: 0, cy: 0, r: 19, fill: '#fff' });
+      add('path', { d: 'M -10 1 Q -5 -9 0 1 Q 5 11 10 1', fill: 'none' });
+      add('line', { x1: 19, y1: 0, x2: PIN_X, y2: 0 });
+      txt(`${p.amp} V ${p.freq}Hz`, 0, 36, 9.5, '#6b7a90');
+      break;
+    }
     case 'resistor': {
       add('line', { x1: -PIN_X, y1: 0, x2: -22, y2: 0 });
       add('rect', { x: -22, y: -11, width: 44, height: 22, rx: 1 });
@@ -717,6 +758,12 @@ function drawBody(c, g, scale = 1) {
       g.appendChild(el('rect', { x: -14, y: -4, width: 28, height: 11, fill: '#fff', stroke: 'none' }));
       const mR = dynR(c);
       if (mR) txt(`${fmt(mR)} Ω`, 0, 4, 9.5, '#1b2536', 'middle', '600');
+      break;
+    }
+    case 'inductor': {
+      add('line', { x1: -PIN_X, y1: 0, x2: -20, y2: 0 });
+      add('path', { d: 'M -20 0 A 5 5 0 0 1 -10 0 A 5 5 0 0 1 0 0 A 5 5 0 0 1 10 0 A 5 5 0 0 1 20 0' });
+      add('line', { x1: 20, y1: 0, x2: PIN_X, y2: 0 });
       break;
     }
     case 'bulb': {
@@ -1249,14 +1296,15 @@ function dynR(c) {
   return null;
 }
 
-function solve() {
+function solve(t, dt, simulating) {
   // 非线性元件（二极管 / 电磁继电器）状态迭代：整网反复求解直到状态稳定
+  // t/dt/simulating：暂态仿真时的时刻、步长与标志（稳态模式不传）
   const comps0 = state.components;
   if (!comps0.length) { state.result = null; return; }
   const nl = comps0.filter(c => c.type === 'diode' || c.type === 'led' || c.type === 'relay');
   nl.forEach(c => { if (c._nl === undefined) c._nl = (c.type === 'relay' ? false : true); });
   for (let i = 0; i < 12; i++) {
-    solvePass();
+    solvePass(t, dt, simulating);
     if (!state.result) return;
     let changed = false;
     nl.forEach(c => {
@@ -1268,10 +1316,10 @@ function solve() {
     });
     if (!changed) break;
   }
-  solvePass();   // 按最终状态再解一遍，保证读数一致
+  solvePass(t, dt, simulating);   // 按最终状态再解一遍，保证读数一致
 }
 
-function solvePass() {
+function solvePass(t, dt, simulating) {
   const comps = state.components;
   if (!comps.length) { state.result = null; return; }
 
@@ -1299,7 +1347,7 @@ function solvePass() {
   let n = 0;
   for (let i = 0; i < nAll; i++) if (i !== groundIdx) num[i] = n++;
 
-  const sources = comps.filter(c => c.type === 'battery');
+  const sources = comps.filter(c => c.type === 'battery' || c.type === 'acsource');
   const m = sources.length;
   const N = n + m;
   const A = Array.from({ length: N }, () => new Array(N).fill(0));
@@ -1329,7 +1377,7 @@ function solvePass() {
   // ---- 二端元件 ----
   comps.forEach(c => {
     const d = DEFS[c.type];
-    if (c.type === 'battery') {
+    if (c.type === 'battery' || c.type === 'acsource') {
       // 内阻接在 内部正极 与 端子正极 之间
       const nInt = nodeIdx.get(c.id + ':_int');
       const nPos = nodeIdx.get(c.id + ':pos');
@@ -1337,10 +1385,10 @@ function solvePass() {
       return;
     }
     // 多端/特殊元件单独处理，不能走二端逻辑
-    if (c.type === 'rheostat' || c.type === 'spdt' || c.type === 'dpdt' || c.type === 'motor' || c.type === 'junc' || c.type === 'capacitor' || c.type === 'relay') return;
+    if (c.type === 'rheostat' || c.type === 'spdt' || c.type === 'dpdt' || c.type === 'motor' || c.type === 'junc' || c.type === 'relay') return;
     const na = nodeIdx.get(c.id + ':' + d.pins[0].id);
     const nb = nodeIdx.get(c.id + ':' + d.pins[1].id);
-    let g, inj = 0;   // inj：诺顿等效电流源（从 a 注入，抵消导通压降）
+    let g, inj = 0;   // inj：诺顿等效电流源（从 a 注入，抵消导通压降 / 维持电感电流）
     switch (c.type) {
       case 'switch': g = 1 / (c.params.closed ? 1e-3 : 1e12); break;
       case 'diode': case 'led': {
@@ -1349,6 +1397,22 @@ function solvePass() {
         const vf = Number(c.params.vf) || 0.7;
         if (c._nl) { g = 1 / ron; inj = vf / ron; }
         else g = 1e-10;
+        break;
+      }
+      case 'capacitor': {
+        // 稳态：开路；暂态：后向欧拉伴随模型（R=dt/C 并联电压源 v_prev）
+        if (simulating) {
+          const Req = dt / Math.max(1e-9, (c.params.C || 100) * 1e-6);
+          g = 1 / Req; inj = (c._v || 0) / Req;
+        } else g = 1e-10;
+        break;
+      }
+      case 'inductor': {
+        // 稳态：短路；暂态：后向欧拉伴随模型（R=L/dt 并联电流源 i_prev）
+        if (simulating) {
+          const Req = Math.max(1e-6, (c.params.L || 1) / dt);
+          g = 1 / Req; inj = -(c._i || 0);
+        } else g = 1e3;
         break;
       }
       case 'metalwire': case 'thermistor': case 'photoresistor':
@@ -1433,7 +1497,10 @@ function solvePass() {
     const row = n + k;
     if (ia >= 0) { A[row][ia] += 1; A[ia][row] += 1; }
     if (ib >= 0) { A[row][ib] -= 1; A[ib][row] -= 1; }
-    z[row] += c.params.emf;
+    const emf = c.type === 'acsource'
+      ? (simulating ? (c.params.amp || 3) * Math.sin(2 * Math.PI * (c.params.freq || 2) * (t || 0)) : 0)
+      : c.params.emf;
+    z[row] += emf;
   });
 
   const x = luSolve(A, z);
@@ -1443,11 +1510,20 @@ function solvePass() {
 
   const compCurrent = {};
   comps.forEach(c => {
-    // 电容器：直流稳态＝断路（隔直流），两端保持充电电压，可算 Q=CU
+    // 电容器：稳态开路（隔直流）；暂态：i = (U − v_prev)/(dt/C)
     if (c.type === 'capacitor') {
       const U = V(nodeIdx.get(c.id + ':a')) - V(nodeIdx.get(c.id + ':b'));
       const cF = Math.max(0, Number(c.params.C) || 0) * 1e-6;
-      compCurrent[c.id] = { U, I: 0, P: 0, cap: { cF, q: cF * U, e: 0.5 * cF * U * U } };
+      const vNow = simulating ? (c._v || 0) : U;
+      const I = simulating && cF > 0 ? (U - vNow) / (dt / cF) : 0;
+      compCurrent[c.id] = { U, I, P: U * I, cap: { cF, q: cF * vNow, e: 0.5 * cF * vNow * vNow } };
+      return;
+    }
+    // 电感线圈：稳态短路；暂态 i = i_prev + (dt/L)·U
+    if (c.type === 'inductor') {
+      const U = V(nodeIdx.get(c.id + ':a')) - V(nodeIdx.get(c.id + ':b'));
+      const I = simulating ? (c._i || 0) + U / Math.max(1e-6, (c.params.L || 1) / dt) : U / 1e-3;
+      compCurrent[c.id] = { U, I, P: U * I };
       return;
     }
     // 二极管 / LED：分段线性电流
@@ -1526,7 +1602,7 @@ function solvePass() {
     const ua = V(na), ub = V(nb);
     const U = ua - ub;
     let I = 0, P = 0;
-    if (c.type === 'battery') {
+    if (c.type === 'battery' || c.type === 'acsource') {
       const k = sources.indexOf(c);
       I = x[n + k];                    // 内部从 + 流向 − 的电流
       P = U * I;
@@ -1980,7 +2056,7 @@ function renderDiag() {
     return;
   }
 
-  const bats = comps.filter(c => c.type === 'battery');
+  const bats = comps.filter(c => c.type === 'battery' || c.type === 'acsource');
   if (!bats.length) {
     items.push({ t: 'err', m: '电路中没有电源，不会有电流。' });
   } else {
@@ -2064,7 +2140,7 @@ function renderDiag() {
 }
 
 function refresh() {
-  solve();
+  if (sim.playing) solve(sim.t, sim.dt, true); else solve();
   renderAll();
   renderPanel();
   renderTable();
@@ -2377,6 +2453,9 @@ $('#btnMotor').onclick = () => loadPreset('motor');
 $('#btnBridge').onclick = () => loadPreset('bridge');
 $('#btnCap').onclick = () => loadPreset('cap');
 $('#btnRelay').onclick = () => loadPreset('relay');
+$('#btnCapDis').onclick = () => loadPreset('capdischarge');
+$('#btnInd').onclick = () => loadPreset('inductor');
+$('#btnAC').onclick = () => loadPreset('acrc');
 $('#btnUndo').onclick = doUndo;
 $('#btnRedo').onclick = doRedo;
 $('#btnSave').onclick = saveCircuit;
@@ -2405,6 +2484,8 @@ $('#fileInput').addEventListener('change', e => {
 
 function loadPreset(name, record = true) {
   if (record) pushHistory();
+  if (sim.playing) simToggle();
+  sim.t = 0; sim.samples = [];
   state.components = []; state.wires = [];
   state.selected = null; state.selectedWire = null;
   const add = (type, x, y, params) => {
@@ -2515,6 +2596,51 @@ function loadPreset(name, record = true) {
     link(cap, 'b', n2, 'w', [{ x: 745, y: 400 }]);
     link(n2, 's', bat, 'neg', [{ x: 800, y: 600 }, { x: 295, y: 600 }]);
     link(bat, 'pos', sw, 'a', [{ x: 205, y: 420 }, { x: 405, y: 420 }]);
+    state.selected = cap.id;
+  }
+
+  // 观察电容器的充放电：SPDT 上掷充电、下掷放电，充放电流方向相反
+  if (name === 'capdischarge') {
+    const bat = add('battery', 250, 600, { emf: 3 });
+    const sw = add('spdt', 480, 600);
+    const rw = add('resistor', 700, 600, { R: 1000 });
+    const cap = add('capacitor', 880, 600, { C: 100 });
+    link(bat, 'pos', sw, 'a', [{ x: 205, y: 578 }]);
+    link(sw, 'c', rw, 'a');
+    link(rw, 'b', cap, 'a');
+    link(cap, 'b', sw, 'b', [{ x: 925, y: 622 }]);
+    link(cap, 'b', bat, 'neg', [{ x: 925, y: 660 }, { x: 295, y: 660 }]);
+    state.selected = cap.id;
+  }
+
+  // 通电/断电自感：闭合开关 B 灯先亮 A 灯慢亮；断开后电感维持电流经 B 反向衰减
+  if (name === 'inductor') {
+    const bat = add('battery', 300, 450, { emf: 3 });
+    const sw = add('switch', 460, 450);
+    const j1 = add('junc', 600, 450);
+    const j2 = add('junc', 900, 450);
+    const ind = add('inductor', 750, 350, { L: 1 });
+    const bulbB = add('bulb', 750, 550, { R: 6 });
+    const bulbA = add('bulb', 1000, 450, { R: 6 });
+    link(bat, 'pos', sw, 'a', [{ x: 255, y: 370 }, { x: 415, y: 370 }]);
+    link(sw, 'b', j1, 'w');
+    link(j1, 'n', ind, 'a', [{ x: 600, y: 350 }]);
+    link(ind, 'b', j2, 'n', [{ x: 795, y: 300 }, { x: 900, y: 300 }]);
+    link(j1, 's', bulbB, 'a', [{ x: 600, y: 550 }]);
+    link(bulbB, 'b', j2, 's', [{ x: 900, y: 550 }]);
+    link(j2, 'e', bulbA, 'a');
+    link(bulbA, 'b', bat, 'neg', [{ x: 1045, y: 560 }, { x: 345, y: 560 }]);
+    state.selected = ind.id;
+  }
+
+  // 交流 RC：示波器观察电源正弦波与电容电压的相位滞后
+  if (name === 'acrc') {
+    const ac = add('acsource', 250, 450, { amp: 3, freq: 2 });
+    const rw = add('resistor', 500, 450, { R: 1000 });
+    const cap = add('capacitor', 700, 450, { C: 100 });
+    link(ac, 'pos', rw, 'a');
+    link(rw, 'b', cap, 'a');
+    link(cap, 'b', ac, 'neg');
     state.selected = cap.id;
   }
 
@@ -2979,12 +3105,155 @@ function switchToolTab(tab) {
 function setFb(el, msg, color) { el.textContent = msg; el.style.color = color; }
 
 /* ============================================================
+   7.8 暂态仿真引擎（时间轴）与示波器
+   ============================================================ */
+const sim = { playing: false, t: 0, dt: 0.0005, steps: 16, samples: [], scopeSel: '' };
+let simRAF = null;
+
+function simStep() {
+  sim.t += sim.dt;
+  solve(sim.t, sim.dt, true);
+  if (!state.result) return;
+  state.components.forEach(c => {
+    const r = state.result.compCurrent[c.id];
+    if (!r) return;
+    // 后向欧拉状态更新
+    if (c.type === 'capacitor') {
+      const Cf = Math.max(1e-9, (c.params.C || 100) * 1e-6);
+      c._v = Math.max(-1000, Math.min(1000, (c._v || 0) + r.I * sim.dt / Cf));
+    }
+    if (c.type === 'inductor') {
+      const Lf = Math.max(1e-6, c.params.L || 1);
+      c._i = Math.max(-1000, Math.min(1000, (c._i || 0) + r.U * sim.dt / Lf));
+    }
+  });
+}
+
+function scopeList() {
+  const list = [];
+  state.components.forEach(c => {
+    const nm = DEFS[c.type].name + '#' + c.id.slice(1);
+    const cur = () => (state.result && state.result.compCurrent[c.id]) || null;
+    list.push({ label: nm + ' 电流', unit: 'A', get: () => { const r0 = cur(); return r0 ? r0.I : 0; } });
+    list.push({ label: nm + ' 电压', unit: 'V', get: () => { const r0 = cur(); return r0 ? r0.U : 0; } });
+    if (c.type === 'bulb') list.push({ label: nm + ' 功率', unit: 'W', get: () => { const r0 = cur(); return r0 ? r0.P : 0; } });
+  });
+  return list;
+}
+
+function rebuildScopeSel() {
+  const sel = $('#scopeSel');
+  const list = scopeList();
+  const cur = sel.value;
+  sel.innerHTML = '';
+  list.forEach((it, i) => {
+    const o = document.createElement('option');
+    o.value = String(i); o.textContent = it.label;
+    sel.appendChild(o);
+  });
+  const idx = list.findIndex(it => it.label === cur);
+  sel.value = String(idx >= 0 ? idx : 0);
+  sim.scopeSel = sel.value;
+}
+
+function renderScope() {
+  const panel = $('#scopePanel');
+  if (panel.style.display === 'none') return;
+  const cv = $('#scopeCanvas');
+  if (cv.width !== cv.clientWidth) cv.width = cv.clientWidth;
+  const ctx = cv.getContext('2d');
+  const W = cv.width, H = cv.height;
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.fillStyle = '#0b1220'; ctx.fillRect(0, 0, W, H);
+  ctx.strokeStyle = '#1e293b'; ctx.lineWidth = 1;
+  for (let gx = 0; gx <= W; gx += W / 12) { ctx.beginPath(); ctx.moveTo(gx, 0); ctx.lineTo(gx, H); ctx.stroke(); }
+  for (let gy = 0; gy <= H; gy += H / 6) { ctx.beginPath(); ctx.moveTo(0, gy); ctx.lineTo(W, gy); ctx.stroke(); }
+  const list = scopeList();
+  const it = list[+($('#scopeSel').value || 0)];
+  const win = 3;   // 时间窗口 3 秒
+  const t0 = sim.t - win;
+  const pts = sim.samples.filter(p => p.t >= t0);
+  ctx.strokeStyle = '#0f766e';
+  ctx.beginPath(); ctx.moveTo(0, H / 2); ctx.lineTo(W, H / 2); ctx.stroke();
+  if (it && pts.length > 1) {
+    let vmax = 1e-6;
+    pts.forEach(p => { vmax = Math.max(vmax, Math.abs(p.v)); });
+    vmax *= 1.15;
+    ctx.strokeStyle = '#38bdf8'; ctx.lineWidth = 1.8;
+    ctx.beginPath();
+    let first = true;
+    pts.forEach(p => {
+      const x = (p.t - t0) / win * W;
+      const y = H / 2 - (p.v / vmax) * (H / 2 - 12);
+      if (first) { ctx.moveTo(x, y); first = false; } else ctx.lineTo(x, y);
+    });
+    ctx.stroke();
+    ctx.fillStyle = '#94a3b8'; ctx.font = '12px sans-serif';
+    ctx.fillText('±' + vmax.toFixed(2) + ' ' + it.unit + '｜窗口 3 s｜' + it.label, 10, 16);
+  } else {
+    ctx.fillStyle = '#94a3b8'; ctx.font = '12px sans-serif';
+    ctx.fillText(it ? it.label + '（无数据）' : '——', 10, 16);
+  }
+}
+
+function simFrame() {
+  if (!sim.playing) return;
+  for (let k = 0; k < sim.steps; k++) simStep();
+  renderAll(); renderTable(); renderDiag();
+  $('#simTime').textContent = 't = ' + sim.t.toFixed(3) + ' s';
+  const list = scopeList();
+  if ($('#scopeSel').options.length !== list.length) rebuildScopeSel();
+  const it = list[+($('#scopeSel').value || 0)];
+  sim.samples.push({ t: sim.t, v: it ? it.get() : 0 });
+  if (sim.samples.length > 2400) sim.samples.splice(0, sim.samples.length - 2400);
+  renderScope();
+  simRAF = requestAnimationFrame(simFrame);
+}
+
+function simToggle() {
+  sim.playing = !sim.playing;
+  const b = $('#btnSim');
+  if (sim.playing) {
+    b.textContent = '⏸ 暂停';
+    if (!simRAF) simRAF = requestAnimationFrame(simFrame);
+    toast('暂态仿真开始（dt = ' + (sim.dt * 1000).toFixed(1) + ' ms）');
+  } else {
+    b.textContent = '▶ 暂态仿真';
+    if (simRAF) { cancelAnimationFrame(simRAF); simRAF = null; }
+    // 暂停：保留暂态快照，不重解静态（否则电容/电感的瞬时读数会被冲掉）
+    renderAll(); renderTable(); renderDiag(); renderPanel();
+    toast('已暂停（当前时刻读数已冻结）');
+  }
+}
+
+function simReset() {
+  sim.playing = false;
+  if (simRAF) { cancelAnimationFrame(simRAF); simRAF = null; }
+  sim.t = 0; sim.samples = [];
+  state.components.forEach(c => { delete c._v; delete c._i; delete c._nl; });
+  $('#btnSim').textContent = '▶ 暂态仿真';
+  $('#simTime').textContent = 't = 0.000 s';
+  refresh();
+  toast('仿真已重置');
+}
+
+$('#btnSim').onclick = simToggle;
+$('#btnSimReset').onclick = simReset;
+$('#btnScope').onclick = () => {
+  const p = $('#scopePanel');
+  p.style.display = p.style.display === 'none' ? 'block' : 'none';
+  rebuildScopeSel(); renderScope();
+};
+$('#scopeSel').onchange = () => { sim.scopeSel = $('#scopeSel').value; renderScope(); };
+$('#simSpeed').onchange = () => { sim.steps = parseInt($('#simSpeed').value, 10) || 16; };
+
+/* ============================================================
    8. 启动
    ============================================================ */
 buildGrid();
 initTools();
 loadPreset('series', false);
-window.__demo = { loadPreset, state, solve, refresh, doUndo, doRedo, history };
+window.__demo = { loadPreset, state, solve, refresh, doUndo, doRedo, history, sim, simStep, simReset };
 requestAnimationFrame(function loop() {
   renderDots();
   requestAnimationFrame(loop);
