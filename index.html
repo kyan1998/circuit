@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>电路可视化 · v0.6 演示</title>
+<title>电路可视化 · v0.7 演示</title>
 <style>
   :root{
     --bg:#eef1f6; --panel:#ffffff; --line:#dde4ee; --text:#1b2536; --muted:#6b7a90;
@@ -157,12 +157,28 @@
     .topbar{flex-wrap:wrap; gap:8px;}
     .sep{display:none;}
   }
+   /* 测量工具弹窗 */
+   .modal-backdrop{position:fixed;inset:0;background:rgba(15,23,42,.45);display:none;align-items:center;justify-content:center;z-index:60;}
+   .modal-backdrop.open{display:flex;}
+   .modal{background:#fff;border-radius:14px;box-shadow:0 20px 60px rgba(0,0,0,.28);width:min(900px,94vw);max-height:92vh;overflow:auto;padding:14px 18px;}
+   .tool-tabs{display:flex;gap:8px;margin-bottom:10px;}
+   .tool-tabs .btn.active{border-color:var(--accent);color:var(--accent);font-weight:600;}
+   .tool-ui{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:10px;}
+   .tool-ui input{width:110px;padding:5px 8px;border:1px solid var(--line);border-radius:8px;font-family:inherit;}
+   .tool-fb{font-size:13px;}
+   .tool-live{font-size:12.5px;color:#6b7a90;}
+   .seg{display:flex;}
+   .seg .btn{border-radius:0;margin-left:-1px;}
+   .seg .btn:first-child{border-radius:8px 0 0 8px;margin-left:0;}
+   .seg .btn.active{background:var(--accent);color:#fff;border-color:var(--accent);}
+   .tool-drag{cursor:ew-resize;}
+   .tool-note{font-size:12px;color:#9aa8bd;margin-top:6px;line-height:1.8;}
 </style>
 </head>
 <body>
 <div class="app">
   <header class="topbar">
-    <div class="brand"><h1>电路可视化</h1><span>v0.6</span></div>
+    <div class="brand"><h1>电路可视化</h1><span>v0.7</span></div>
     <div class="spacer"></div>
     <div class="btn-group">
       <button class="btn" id="btnSeries">示例：串联</button>
@@ -192,6 +208,8 @@
       <button class="btn" id="btnZoomOut" title="缩小视图（滚轮也可）">缩小</button>
       <button class="btn" id="btnZoomReset" title="视图复位">复位</button>
     </div>
+    <div class="sep"></div>
+    <button class="btn" id="btnTools">测量工具</button>
     <input type="file" id="fileInput" accept=".json,application/json" hidden>
   </header>
 
@@ -220,6 +238,51 @@
         </g>
       </svg>
       <div class="toast" id="toast"></div>
+
+      <div class="modal-backdrop" id="toolsModal">
+        <div class="modal">
+          <div style="display:flex;align-items:center;justify-content:space-between">
+            <h2 style="margin:0;font-size:16px">测量工具</h2>
+            <button class="btn" id="toolsClose">关闭</button>
+          </div>
+          <div class="tool-tabs">
+            <button class="btn active" id="tabCaliper">游标卡尺</button>
+            <button class="btn" id="tabMic">螺旋测微器</button>
+          </div>
+          <div id="calWrap">
+            <svg id="calSvg" viewBox="0 0 720 210" style="width:100%"></svg>
+            <div class="tool-ui">
+              <span style="font-size:12px;color:#6b7a90">分度：</span>
+              <div class="seg">
+                <button class="btn active" data-divs="10">10 分度（0.1mm）</button>
+                <button class="btn" data-divs="20">20 分度（0.05mm）</button>
+                <button class="btn" data-divs="50">50 分度（0.02mm）</button>
+              </div>
+              <button class="btn" id="calRand">放入随机物体</button>
+              <button class="btn" id="calTake">取出物体</button>
+              <input id="calRead" placeholder="读数（mm）" disabled>
+              <button class="btn" id="calCheck" disabled>检查</button>
+              <button class="btn" id="calShow" disabled>显示正确读数</button>
+              <span class="tool-fb" id="calFb"></span>
+              <span class="tool-live" id="calLive"></span>
+            </div>
+            <div class="tool-note">拖动右侧游标框可自由开合，观察哪条游标刻度线与主尺对齐；<b>游标卡尺读数不需要估读位</b>。读数 = 主尺整毫米 + 对齐格数 × 分度值。</div>
+          </div>
+          <div id="micWrap" style="display:none">
+            <svg id="micSvg" viewBox="0 0 780 210" style="width:100%"></svg>
+            <div class="tool-ui">
+              <button class="btn" id="micRand">放入随机物体</button>
+              <button class="btn" id="micTake">取出物体</button>
+              <input id="micRead" placeholder="读数（mm）" disabled>
+              <button class="btn" id="micCheck" disabled>检查</button>
+              <button class="btn" id="micShow" disabled>显示正确读数</button>
+              <span class="tool-fb" id="micFb"></span>
+              <span class="tool-live" id="micLive"></span>
+            </div>
+            <div class="tool-note">拖动右侧测微套筒可自由旋进旋出；读数 = 固定刻度（含半毫米）+ 可动刻度 × 0.01 mm，<b>需要估读一位</b>（到 0.001 mm），答案误差 ≤ 0.002 mm 判对。</div>
+          </div>
+        </div>
+      </div>
     </section>
 
     <aside class="side">
@@ -317,6 +380,11 @@ const DEFS = {
     params: { R: 0.001 },
     pins: [{ id: 'a', x: -PIN_X, y: 0 }, { id: 'b', x: PIN_X, y: 0 }]
   },
+  idealAmmeter: {
+    name: '理想电流表', w: 100, h: 56,
+    params: { R: 1e-9 },   // 理想化：内阻为零
+    pins: [{ id: 'a', x: -PIN_X, y: 0 }, { id: 'b', x: PIN_X, y: 0 }]
+  },
   galvanometer: {
     name: '灵敏电流计', w: 100, h: 56,
     params: { R: 100, Ig: 0.0003 },   // 内阻 / 满偏电流（A）
@@ -325,6 +393,11 @@ const DEFS = {
   voltmeter: {
     name: '电压表', w: 100, h: 56,
     params: { R: 1e7 },
+    pins: [{ id: 'a', x: -PIN_X, y: 0 }, { id: 'b', x: PIN_X, y: 0 }]
+  },
+  idealVoltmeter: {
+    name: '理想电压表', w: 100, h: 56,
+    params: { R: 1e12 },   // 理想化：内阻无穷大
     pins: [{ id: 'a', x: -PIN_X, y: 0 }, { id: 'b', x: PIN_X, y: 0 }]
   },
   capacitor: {
@@ -618,6 +691,26 @@ function drawBody(c, g, scale = 1) {
         const v = c.type === 'ammeter' ? Math.abs(rr.I) : Math.abs(rr.U);
         txt(`${fmt(v)} ${c.type === 'ammeter' ? 'A' : 'V'}`, 0, 36, 10.5, '#dc2626', 'middle', '600');
       }
+      break;
+    }
+    case 'idealAmmeter': {
+      add('line', { x1: -PIN_X, y1: 0, x2: -19, y2: 0 });
+      add('circle', { cx: 0, cy: 0, r: 19, fill: '#fff' });
+      txt('A', 0, 6.5, 17, '#1b2536', 'middle', '600');
+      txt('理想', 0, -26, 8.5, '#9aa8bd', 'middle', '500');
+      add('line', { x1: 19, y1: 0, x2: PIN_X, y2: 0 });
+      const iar = state.result && state.result.compCurrent[c.id];
+      if (iar) txt(`${fmt(Math.abs(iar.I))} A`, 0, 36, 10.5, '#dc2626', 'middle', '600');
+      break;
+    }
+    case 'idealVoltmeter': {
+      add('line', { x1: -PIN_X, y1: 0, x2: -19, y2: 0 });
+      add('circle', { cx: 0, cy: 0, r: 19, fill: '#fff' });
+      txt('V', 0, 6.5, 17, '#1b2536', 'middle', '600');
+      txt('理想', 0, -26, 8.5, '#9aa8bd', 'middle', '500');
+      add('line', { x1: 19, y1: 0, x2: PIN_X, y2: 0 });
+      const ivr = state.result && state.result.compCurrent[c.id];
+      if (ivr) txt(`${fmt(Math.abs(ivr.U))} V`, 0, 36, 10.5, '#dc2626', 'middle', '600');
       break;
     }
     case 'galvanometer': {
@@ -1274,6 +1367,11 @@ function renderPanel() {
         <input type="number" id="capC" value="${c.params.C}" min="0.1" max="10000" step="1">
         <span style="font-size:11px;color:#9aa8bd;width:24px">μF</span></div>
       <div id="capInfo" style="font-size:11.5px;color:#6b7a90;line-height:1.9;margin-top:2px"></div>`;
+  } else if (c.type === 'idealAmmeter' || c.type === 'idealVoltmeter') {
+    html += `<div style="font-size:12px;color:#6b7a90;line-height:1.9;margin-top:4px">
+      ${c.type === 'idealAmmeter'
+        ? '内阻：<b>0 Ω</b>（理想电流表，串联不分压，读数即支路电流）'
+        : '内阻：<b>∞</b>（理想电压表，并联不分流，读数即被测电压）'}</div>`;
   } else if (c.type === 'motor') {
     html += `
       <div class="prop-row"><label>电枢电阻</label>
@@ -1507,7 +1605,7 @@ function renderDiag() {
   });
 
   comps.forEach(c => {
-    if (c.type !== 'voltmeter') return;
+    if (c.type !== 'voltmeter' && c.type !== 'idealVoltmeter') return;
     const r = state.result && state.result.compCurrent[c.id];
     if (r && Math.abs(r.I) < 1e-9 && Math.abs(r.U) < 1e-9) {
       items.push({ t: 'info', m: `电压表#${c.id.slice(1)} 读数为 0，检查是否并联在被测元件两端。` });
@@ -2002,9 +2100,235 @@ function toast(msg) {
 }
 
 /* ============================================================
+   7.5 测量工具：游标卡尺 / 螺旋测微器
+   ============================================================ */
+const tools = {
+  tab: 'caliper',
+  cal: { n: 10, W: null, gap: 18 },   // n 分度数；W 物体宽度(null=自由模式)；gap 开口
+  mic: { W: null, L: 6.5 }            // L 测砧间距
+};
+const toolNS = 'http://www.w3.org/2000/svg';
+function tEl(tag, attrs) {
+  const e = document.createElementNS(toolNS, tag);
+  for (const k in (attrs || {})) e.setAttribute(k, attrs[k]);
+  return e;
+}
+function tText(svg, str, attrs) {
+  const t = tEl('text', attrs); t.textContent = str; svg.appendChild(t); return t;
+}
+
+function calCorrect(W, n) {
+  const M = Math.floor(W + 1e-9);
+  const k = Math.round((W - M) * n) % n;
+  return { M, k, val: M + k / n };
+}
+
+function drawCaliper() {
+  const svg = $('#calSvg'); svg.innerHTML = '';
+  const st = tools.cal, s = 6, x0 = 60, n = st.n;
+  const gap = st.W != null ? st.W : st.gap;
+  const xJaw = x0 + gap * s;
+  // 尺身
+  svg.appendChild(tEl('rect', { x: x0 - 16, y: 60, width: 300, height: 24, fill: '#e2e8f0', stroke: '#334155', rx: 2 }));
+  svg.appendChild(tEl('rect', { x: x0 - 16, y: 88, width: 620, height: 26, fill: '#fff', stroke: '#334155', rx: 2 }));
+  // 主尺刻度（每 1mm，每 10mm 标数字）
+  for (let m = 0; m <= 100; m++) {
+    const x = x0 + m * s;
+    svg.appendChild(tEl('line', { x1: x, y1: 92, x2: x, y2: 108, stroke: m % 10 ? '#64748b' : '#1b2536', 'stroke-width': m % 10 ? 1 : 1.6 }));
+    if (m % 10 === 0) tText(svg, m / 10, { x, y: 84, 'text-anchor': 'middle', 'font-size': 10, fill: '#1b2536' });
+  }
+  tText(svg, 'cm', { x: x0 - 10, y: 84, 'font-size': 9, fill: '#9aa8bd' });
+  // 物体
+  if (st.W != null && gap > 0.3)
+    svg.appendChild(tEl('rect', { x: x0 + 3, y: 96, width: gap * s - 6, height: 34, fill: '#cbd5e1', stroke: '#94a3b8', rx: 3 }));
+  // 固定量爪
+  svg.appendChild(tEl('rect', { x: x0 - 30, y: 60, width: 16, height: 102, fill: '#93c5fd', stroke: '#3b82f6', rx: 3 }));
+  // 游标框 + 可动爪（可拖）
+  const vLen = (n - 1) * s;
+  svg.appendChild(tEl('rect', { x: xJaw - 14, y: 60, width: vLen + 34, height: 102, fill: 'rgba(59,130,246,.08)', stroke: '#60a5fa', rx: 4 }));
+  svg.appendChild(tEl('rect', { x: xJaw - 14, y: 60, width: 16, height: 102, fill: '#93c5fd', stroke: '#3b82f6', rx: 3, class: 'tool-drag' }));
+  // 游标副尺
+  svg.appendChild(tEl('rect', { x: xJaw - 2, y: 106, width: vLen + 8, height: 24, fill: '#dbeafe', stroke: '#3b82f6', rx: 2 }));
+  const f = gap - Math.floor(gap);
+  const k = Math.round(f * n) % n;
+  for (let i = 0; i < n; i++) {
+    const x = xJaw + i * (n - 1) / n * s;
+    const hot = i === k;
+    svg.appendChild(tEl('line', { x1: x, y1: 106, x2: x, y2: 126, stroke: hot ? '#dc2626' : '#1b2536', 'stroke-width': hot ? 2 : 1.2 }));
+    if (i % 5 === 0) tText(svg, i, { x, y: 140, 'text-anchor': 'middle', 'font-size': 9, fill: hot ? '#dc2626' : '#1b2536' });
+  }
+  // 主尺上对齐的那条线（红色细线提示）
+  const M = Math.floor(gap);
+  svg.appendChild(tEl('line', { x1: x0 + (M + k) * s, y1: 88, x2: x0 + (M + k) * s, y2: 130, stroke: '#dc2626', 'stroke-width': 1.2, opacity: 0.75 }));
+  const live = $('#calLive');
+  if (live) live.textContent = st.W != null ? '测物体中…' : '当前开口：' + gap.toFixed(n === 10 ? 1 : 2) + ' mm';
+}
+
+function micMainOf(L) { return Math.floor(L * 2 + 1e-9) / 2; }
+function drawMicrometer() {
+  const svg = $('#micSvg'); svg.innerHTML = '';
+  const st = tools.mic, s = 24, zx = 90;
+  const L = st.W != null ? st.W : st.L;
+  const xEdge = zx + L * s;
+  // 尺架与砧座
+  svg.appendChild(tEl('rect', { x: 34, y: 108, width: 36, height: 48, fill: '#94a3b8', stroke: '#475569', rx: 4 }));
+  // 测微螺杆
+  if (xEdge - 66 > 2)
+    svg.appendChild(tEl('rect', { x: 66, y: 120, width: xEdge - 66, height: 22, fill: '#cbd5e1', stroke: '#94a3b8' }));
+  // 物体
+  if (st.W != null && L > 0.5)
+    svg.appendChild(tEl('rect', { x: 72, y: 116, width: Math.max(2, xEdge - 76), height: 30, fill: '#cbd5e1', stroke: '#94a3b8', rx: 2 }));
+  // 固定套筒（主尺：上 mm，下半 mm）
+  svg.appendChild(tEl('rect', { x: 60, y: 100, width: 640, height: 58, fill: '#fff', stroke: '#334155', rx: 3 }));
+  for (let m = 0; m <= 20; m++) {
+    const x = zx + m * s;
+    svg.appendChild(tEl('line', { x1: x, y1: 112, x2: x, y2: 130, stroke: '#1b2536', 'stroke-width': 1.4 }));
+    tText(svg, m, { x, y: 108, 'text-anchor': 'middle', 'font-size': 8.5, fill: '#1b2536' });
+    if (m < 20) svg.appendChild(tEl('line', { x1: zx + (m + 0.5) * s, y1: 130, x2: zx + (m + 0.5) * s, y2: 146, stroke: '#1b2536', 'stroke-width': 1.1 }));
+  }
+  // 基线（穿过套筒与可动刻度）
+  svg.appendChild(tEl('line', { x1: 60, y1: 130, x2: xEdge + 112, y2: 130, stroke: '#334155', 'stroke-width': 1.2 }));
+  // 可动刻度套筒（可拖）
+  svg.appendChild(tEl('rect', { x: xEdge, y: 104, width: 112, height: 50, fill: '#e2e8f0', stroke: '#334155', rx: 5, class: 'tool-drag' }));
+  const T = (L * 100) % 50;
+  for (let j = Math.floor(T) - 1; j <= Math.floor(T) + 14; j++) {
+    const x = xEdge + 9 + (j - T) * 7;
+    if (x < xEdge + 4 || x > xEdge + 106) continue;
+    const jj = ((j % 50) + 50) % 50;
+    svg.appendChild(tEl('line', { x1: x, y1: 122, x2: x, y2: 142, stroke: '#1b2536', 'stroke-width': 1.1 }));
+    if (jj % 5 === 0) tText(svg, jj, { x, y: 152, 'text-anchor': 'middle', 'font-size': 8.5, fill: '#1b2536' });
+  }
+  // 读数指示线
+  svg.appendChild(tEl('line', { x1: xEdge + 9, y1: 110, x2: xEdge + 9, y2: 150, stroke: '#dc2626', 'stroke-width': 1.6 }));
+  const live = $('#micLive');
+  if (live) live.textContent = st.W != null ? '测物体中…' : '当前测砧间距：' + L.toFixed(3) + ' mm';
+}
+
+function drawTools() { drawCaliper(); drawMicrometer(); }
+
+function initTools() {
+  $('#btnTools').onclick = () => { $('#toolsModal').classList.add('open'); drawTools(); };
+  $('#toolsClose').onclick = () => $('#toolsModal').classList.remove('open');
+  $('#tabCaliper').onclick = () => switchToolTab('caliper');
+  $('#tabMic').onclick = () => switchToolTab('mic');
+
+  // 游标卡尺：分度切换 / 随机物体 / 拖动 / 判定
+  document.querySelectorAll('#calWrap [data-divs]').forEach(b => {
+    b.onclick = () => {
+      tools.cal.n = parseInt(b.dataset.divs, 10);
+      document.querySelectorAll('#calWrap [data-divs]').forEach(x => x.classList.toggle('active', x === b));
+      drawCaliper();
+    };
+  });
+  $('#calRand').onclick = () => {
+    const n = tools.cal.n, M = 20 + Math.floor(Math.random() * 60), k = Math.floor(Math.random() * n);
+    tools.cal.W = M + k / n;
+    drawCaliper();
+    $('#calRead').disabled = false; $('#calCheck').disabled = false; $('#calShow').disabled = false;
+    $('#calRead').value = ''; $('#calFb').textContent = '';
+  };
+  $('#calTake').onclick = () => {
+    tools.cal.W = null; drawCaliper();
+    $('#calRead').disabled = true; $('#calCheck').disabled = true; $('#calShow').disabled = true;
+    $('#calFb').textContent = ''; $('#calRead').value = '';
+  };
+  $('#calCheck').onclick = () => {
+    const st = tools.cal, fb = $('#calFb');
+    const u = parseFloat($('#calRead').value);
+    if (!isFinite(u)) { setFb(fb, '请先输入读数', '#9aa8bd'); return; }
+    const c = calCorrect(st.W, st.n);
+    if (Math.abs(u - c.val) < 1e-9) {
+      setFb(fb, `✓ 正确！读数 ${c.val} mm`, '#16a34a');
+    } else {
+      setFb(fb, `✗ 不对。提示：先读主尺整毫米 ${c.M}，再看游标第 ${c.k} 格与主尺对齐`, '#dc2626');
+    }
+  };
+  $('#calShow').onclick = () => {
+    const c = calCorrect(tools.cal.W, tools.cal.n);
+    const unit = tools.cal.n === 10 ? 0.1 : tools.cal.n === 20 ? 0.05 : 0.02;
+    setFb($('#calFb'),
+      c.k === 0
+        ? `正确读数：游标 0 格对齐 → ${c.M} + 0 = ${c.val} mm`
+        : `正确读数：主尺 ${c.M} mm + 游标第 ${c.k} 格 × ${unit} mm = ${c.val} mm（不估读）`,
+      '#2563eb');
+  };
+
+  // 螺旋测微器
+  $('#micRand').onclick = () => {
+    tools.mic.W = Math.floor(2000 + Math.random() * 13000) / 1000;
+    drawMicrometer();
+    $('#micRead').disabled = false; $('#micCheck').disabled = false; $('#micShow').disabled = false;
+    $('#micRead').value = ''; $('#micFb').textContent = '';
+  };
+  $('#micTake').onclick = () => {
+    tools.mic.W = null; drawMicrometer();
+    $('#micRead').disabled = true; $('#micCheck').disabled = true; $('#micShow').disabled = true;
+    $('#micFb').textContent = ''; $('#micRead').value = '';
+  };
+  $('#micCheck').onclick = () => {
+    const st = tools.mic, fb = $('#micFb');
+    const u = parseFloat($('#micRead').value);
+    if (!isFinite(u)) { setFb(fb, '请先输入读数', '#9aa8bd'); return; }
+    if (Math.abs(u - st.W) <= 0.002 + 1e-9) {
+      setFb(fb, `✓ 正确！物体真实长度 ${st.W} mm（估读位在 ±0.002 内均判对）`, '#16a34a');
+    } else {
+      const T = (st.W * 100) % 50;
+      setFb(fb, `✗ 不对。提示：固定刻度先读到 ${micMainOf(st.W)} mm，可动刻度约 ${T.toFixed(1)}，别忘了估读`, '#dc2626');
+    }
+  };
+  $('#micShow').onclick = () => {
+    const st = tools.mic, T = (st.W * 100) % 50;
+    setFb($('#micFb'),
+      `正确读数：固定刻度 ${micMainOf(st.W)} mm + 可动刻度 ${T.toFixed(1)} × 0.01 mm = ${st.W.toFixed(3)} mm`,
+      '#2563eb');
+  };
+
+  // 拖动（自由探索模式）
+  let drag = null;
+  $('#calSvg').addEventListener('pointerdown', e => {
+    if (tools.cal.W != null) return;
+    if (!e.target.classList.contains('tool-drag')) return;
+    drag = { svg: 'cal', sx: e.clientX, base: tools.cal.gap };
+    e.preventDefault();
+  });
+  $('#micSvg').addEventListener('pointerdown', e => {
+    if (tools.mic.W != null) return;
+    if (!e.target.classList.contains('tool-drag')) return;
+    drag = { svg: 'mic', sx: e.clientX, base: tools.mic.L };
+    e.preventDefault();
+  });
+  window.addEventListener('pointermove', e => {
+    if (!drag) return;
+    const svg = $(drag.svg === 'cal' ? '#calSvg' : '#micSvg');
+    const vb = drag.svg === 'cal' ? 720 : 780;
+    const pxToWorld = (svg.getBoundingClientRect().width / vb);
+    if (drag.svg === 'cal') {
+      let g = drag.base + (e.clientX - drag.sx) / (6 * pxToWorld);
+      tools.cal.gap = Math.round(Math.max(0, Math.min(100, g)) * 20) / 20;
+      drawCaliper();
+    } else {
+      let L = drag.base + (e.clientX - drag.sx) / (24 * pxToWorld);
+      tools.mic.L = Math.max(0, Math.min(20, L));
+      drawMicrometer();
+    }
+  });
+  window.addEventListener('pointerup', () => { drag = null; });
+}
+
+function switchToolTab(tab) {
+  tools.tab = tab;
+  $('#calWrap').style.display = tab === 'caliper' ? '' : 'none';
+  $('#micWrap').style.display = tab === 'mic' ? '' : 'none';
+  $('#tabCaliper').classList.toggle('active', tab === 'caliper');
+  $('#tabMic').classList.toggle('active', tab === 'mic');
+}
+function setFb(el, msg, color) { el.textContent = msg; el.style.color = color; }
+
+/* ============================================================
    8. 启动
    ============================================================ */
 buildGrid();
+initTools();
 loadPreset('series', false);
 window.__demo = { loadPreset, state, solve, refresh, doUndo, doRedo, history };
 requestAnimationFrame(function loop() {
