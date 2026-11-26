@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>电路可视化 · v1.2 演示</title>
+<title>电路可视化 · v1.3 演示</title>
 <style>
   :root{
     --bg:#eef1f6; --panel:#ffffff; --line:#dde4ee; --text:#1b2536; --muted:#6b7a90;
@@ -191,7 +191,7 @@
 <body>
 <div class="app">
   <header class="topbar">
-    <div class="brand"><h1>电路可视化</h1><span>v1.2</span></div>
+    <div class="brand"><h1>电路可视化</h1><span>v1.3</span></div>
     <div class="spacer"></div>
     <div class="btn-group">
       <button class="btn" id="btnSeries">示例：串联</button>
@@ -205,6 +205,7 @@
       <button class="btn" id="btnCapDis">示例：充放电</button>
       <button class="btn" id="btnInd">示例：自感</button>
       <button class="btn" id="btnAC">示例：交流RC</button>
+      <button class="btn" id="btnRLC">示例：RLC谐振</button>
     </div>
     <div class="sep"></div>
     <div class="btn-group">
@@ -378,6 +379,13 @@
         <div style="display:flex;gap:10px;align-items:center;padding:5px 10px;">
           <span style="font-size:12px;color:#94a3b8">示波器（暂态仿真时自动记录）：</span>
           <select id="scopeSel" style="flex:1;padding:4px 6px;border:1px solid #334155;border-radius:8px;background:#1e293b;color:#e2e8f0;font-family:inherit"></select>
+          <span style="font-size:12px;color:#94a3b8">扫频</span>
+          <input id="sweepF1" type="number" value="10" min="0.1" step="1" style="width:56px;padding:4px 6px;border:1px solid #334155;border-radius:8px;background:#1e293b;color:#e2e8f0;font-family:inherit">
+          <span style="font-size:12px;color:#94a3b8">→</span>
+          <input id="sweepF2" type="number" value="150" min="0.2" step="1" style="width:56px;padding:4px 6px;border:1px solid #334155;border-radius:8px;background:#1e293b;color:#e2e8f0;font-family:inherit">
+          <span style="font-size:12px;color:#94a3b8">Hz</span>
+          <button class="btn" id="btnSweep" style="padding:4px 12px">扫频分析</button>
+          <button class="btn" id="btnWave" style="padding:4px 12px;display:none">返回波形</button>
           <span id="scopeInfo" style="font-size:12px;color:#94a3b8"></span>
         </div>
         <canvas id="scopeCanvas" height="140" style="width:100%;height:140px;display:block"></canvas>
@@ -631,6 +639,7 @@ function restoreFrom(s) {
   state.wiring = null;
   state.drag = null;
   state.placing = null;
+  sim.rms = {}; sim.sweep = null; sim.view = 'wave';
   refresh();
 }
 
@@ -1267,7 +1276,9 @@ function renderDots() {
     if (!g) return;
     const glow = g.querySelector('.bulb-glow');
     if (!glow) return;
-    const P = r ? Math.abs(r.P) : 0;
+    // 交流/暂态下用平均功率（避免瞬时功率随波形闪烁），稳态用瞬时值
+    const s = sim.t > 0 ? sim.rms[c.id] : null;
+    const P = s ? Math.abs(s.p) : (r ? Math.abs(r.P) : 0);
     const b = clamp(P / Math.max(0.01, c.params.ratedP), 0, 1.6);
     glow.setAttribute('opacity', (b * 1.0).toFixed(3));
     const circle = g.querySelectorAll('circle')[1];
@@ -1363,9 +1374,9 @@ function solvePass(t, dt, simulating) {
     const key = c.id + ':' + p.id;
     if (!nodeIdx.has(key)) { nodeIdx.set(key, nodes.length); nodes.push(key); }
   }));
-  // 电池内部节点（理想电压源 + 内阻串联）
+  // 电源内部节点（理想电压源 + 内阻串联；电池与交流源都需要）
   comps.forEach(c => {
-    if (c.type !== 'battery') return;
+    if (c.type !== 'battery' && c.type !== 'acsource') return;
     const key = c.id + ':_int';
     nodeIdx.set(key, nodes.length); nodes.push(key);
   });
@@ -1433,18 +1444,19 @@ function solvePass(t, dt, simulating) {
         break;
       }
       case 'capacitor': {
-        // 稳态：开路；暂态：后向欧拉伴随模型（R=dt/C 并联电压源 v_prev）
+        // 稳态：开路；暂态：梯形积分伴随模型（G=2C/dt 并联历史电流源，无损、二阶精度）
+        // 后向欧拉（旧版）会引入 dt/(2C) 的数值串联电阻，在低阻 RLC 回路里误差高达几十%
         if (simulating) {
-          const Req = dt / Math.max(1e-9, (c.params.C || 100) * 1e-6);
-          g = 1 / Req; inj = (c._v || 0) / Req;
+          const G = 2 * Math.max(1e-9, (c.params.C || 100) * 1e-6) / dt;
+          g = G; inj = G * (c._v || 0) + (c._i || 0);
         } else g = 1e-10;
         break;
       }
       case 'inductor': {
-        // 稳态：短路；暂态：后向欧拉伴随模型（R=L/dt 并联电流源 i_prev）
+        // 稳态：短路；暂态：梯形积分伴随模型（R=2L/dt 并联历史电流源 i_prev、电压源 v_prev/R）
         if (simulating) {
-          const Req = Math.max(1e-6, (c.params.L || 1) / dt);
-          g = 1 / Req; inj = -(c._i || 0);
+          const Req = 2 * Math.max(1e-6, (c.params.L || 1) / dt);
+          g = 1 / Req; inj = -(c._i || 0) - (c._v || 0) / Req;
         } else g = 1e3;
         break;
       }
@@ -1552,19 +1564,20 @@ function solvePass(t, dt, simulating) {
 
   const compCurrent = {};
   comps.forEach(c => {
-    // 电容器：稳态开路（隔直流）；暂态：i = (U − v_prev)/(dt/C)
+    // 电容器：稳态开路（隔直流）；暂态：i = G·(U − v_prev) − i_prev，G = 2C/dt（梯形积分）
     if (c.type === 'capacitor') {
       const U = V(nodeIdx.get(c.id + ':a')) - V(nodeIdx.get(c.id + ':b'));
       const cF = Math.max(0, Number(c.params.C) || 0) * 1e-6;
       const vNow = simulating ? (c._v || 0) : U;
-      const I = simulating && cF > 0 ? (U - vNow) / (dt / cF) : 0;
+      const I = simulating && cF > 0 ? (2 * cF / dt) * (U - vNow) - (c._i || 0) : 0;
       compCurrent[c.id] = { U, I, P: U * I, cap: { cF, q: cF * vNow, e: 0.5 * cF * vNow * vNow } };
       return;
     }
-    // 电感线圈：稳态短路；暂态 i = i_prev + (dt/L)·U
+    // 电感线圈：稳态短路；暂态 i = i_prev + (v_prev + U)/(2L/dt)（梯形积分）
     if (c.type === 'inductor') {
       const U = V(nodeIdx.get(c.id + ':a')) - V(nodeIdx.get(c.id + ':b'));
-      const I = simulating ? (c._i || 0) + U / Math.max(1e-6, (c.params.L || 1) / dt) : U / 1e-3;
+      const Req = 2 * Math.max(1e-6, (c.params.L || 1) / dt);
+      const I = simulating ? (c._i || 0) + ((c._v || 0) + U) / Req : U / 1e-3;
       compCurrent[c.id] = { U, I, P: U * I };
       return;
     }
@@ -1701,8 +1714,39 @@ const PARAM_UI = {
     { key: 'ratedP', label: '额定功率', unit: 'W', min: 0.05, max: 20, step: 0.05 }
   ],
   ammeter: [{ key: 'R', label: '内阻', unit: 'Ω', min: 0.0001, max: 5, step: 0.0001 }],
-  voltmeter: [{ key: 'R', label: '内阻', unit: 'Ω', min: 1000, max: 1e9, step: 1000 }]
+  voltmeter: [{ key: 'R', label: '内阻', unit: 'Ω', min: 1000, max: 1e9, step: 1000 }],
+  inductor: [{ key: 'L', label: '自感系数', unit: 'H', min: 0.01, max: 10, step: 0.01 }]
 };
+
+// 电路里的第一组 L / C（RLC 谐振分析用；f₀ = 1/(2π√(LC))）
+function rlcParams() {
+  const ind = state.components.find(c => c.type === 'inductor');
+  const cap = state.components.find(c => c.type === 'capacitor');
+  if (!ind || !cap) return null;
+  const L = Math.max(1e-9, Number(ind.params.L) || 1);
+  const Cf = Math.max(1e-12, (Number(cap.params.C) || 100) * 1e-6);
+  return { L, Cf, f0: 1 / (2 * Math.PI * Math.sqrt(L * Cf)), rho: Math.sqrt(L / Cf) };
+}
+
+function rlcInfoHtml(ac) {
+  const rl = rlcParams();
+  const head = '<b style="font-size:12px">RLC 谐振分析</b>';
+  if (!rl) return head + '<div style="color:#9aa8bd;margin-top:2px">电路中需要有电感线圈和电容器各一个（取第一个）。</div>';
+  const f = Math.max(0.01, Number(ac.params.freq) || 0);
+  const XL = 2 * Math.PI * f * rl.L;
+  const XC = 1 / (2 * Math.PI * f * rl.Cf);
+  const ratio = f / rl.f0;
+  let st, cls;
+  if (Math.abs(ratio - 1) < 0.02) { st = '谐振'; cls = '#047857'; }
+  else if (Math.abs(ratio - 1) < 0.15) { st = '接近谐振'; cls = '#1d4ed8'; }
+  else { st = '失谐'; cls = '#b45309'; }
+  return head + `
+    <div style="margin-top:2px">谐振频率 f₀ = 1/(2π√LC) = <b>${rl.f0.toFixed(2)} Hz</b></div>
+    <div>特征阻抗 √(L/C) = <b>${fmt(rl.rho)} Ω</b>（谐振时 XL = XC = 特征阻抗）</div>
+    <div>当前 f = ${f} Hz：XL = ${fmt(XL)} Ω，XC = ${fmt(XC)} Ω</div>
+    <div style="color:${cls}">当前状态：<b>${st}</b>${Math.abs(ratio - 1) >= 0.02 ? `（f/f₀ = ${ratio.toFixed(3)}）` : ''}</div>
+    <div style="color:#9aa8bd;margin-top:2px">谐振时感抗与容抗抵消，回路只剩电阻限流、电流最大；U_L 与 U_C 等值反相，可远大于电源电压。可用示波器「扫频分析」实测幅频曲线。</div>`;
+}
 
 function renderPanel() {
   // 选中导线：显示删除按钮
@@ -1762,6 +1806,20 @@ function renderPanel() {
       <div style="font-size:11.5px;color:#6b7a90;line-height:1.9;margin-top:2px">
         零点在刻度盘中央：电流从左端（a）流入时指针<b>右偏</b>，反向则左偏<br>
         <span style="color:#9aa8bd">量程 ±${fmt(c.params.Ig * 1e6)} μA，超满偏会触发警告</span></div>`;
+  } else if (c.type === 'acsource') {
+    html += `
+      <div class="prop-row"><label>峰值</label>
+        <input type="number" id="acAmp" value="${c.params.amp}" min="0.1" max="24" step="0.1">
+        <span style="font-size:11px;color:#9aa8bd;width:18px">V</span></div>
+      <div class="prop-row"><label>频率</label>
+        <input type="number" id="acFreq" value="${c.params.freq}" min="0.1" max="5000" step="0.1">
+        <span style="font-size:11px;color:#9aa8bd;width:24px">Hz</span></div>
+      <div class="prop-row"><label>内阻</label>
+        <input type="number" id="acR" value="${c.params.r}" min="0" max="20" step="0.1">
+        <span style="font-size:11px;color:#9aa8bd;width:18px">Ω</span></div>
+      <div style="font-size:11.5px;color:#9aa8bd;line-height:1.9;margin-top:2px">
+        稳态读数为 0：交流源要在「▶ 暂态仿真」下才有输出</div>
+      <div id="acRlc" style="font-size:12px;color:#1b2536;line-height:1.9;margin-top:8px;border-top:1px solid var(--line);padding-top:8px"></div>`;
   } else if (c.type === 'capacitor') {
     html += `
       <div class="prop-row"><label>电容</label>
@@ -1837,6 +1895,16 @@ function renderPanel() {
         <span style="font-size:11px;color:#9aa8bd;width:18px">${r.unit}</span>
       </div>`;
     });
+  }
+
+  // 交流读数：暂态仿真积累的滑动窗口有效值（直流稳态 sim.t = 0 不显示）
+  if (sim.t > 0 && sim.rms && sim.rms[c.id]) {
+    const s = sim.rms[c.id];
+    html += `<div style="font-size:11.5px;color:#6b7a90;line-height:1.9;margin-top:8px;border-top:1px solid var(--line);padding-top:8px">
+      <b style="font-size:12px;color:#1b2536">有效值读数（t = ${sim.t.toFixed(3)} s）</b><br>
+      U 有效值 ${fmt(Math.sqrt(s.u2))} V ｜ I 有效值 ${fmt(Math.sqrt(s.i2))} A<br>
+      平均功率 ${fmt(Math.abs(s.p))} W（滑动窗口 τ≈80 ms）
+    </div>`;
   }
 
   propPanel.innerHTML = html;
@@ -2052,6 +2120,28 @@ function renderPanel() {
         syncMotor();
       };
     });
+  } else if (c.type === 'acsource') {
+    const syncAc = () => {
+      const box = $('#acRlc');
+      if (box) box.innerHTML = rlcInfoHtml(c);
+    };
+    [['#acAmp', 'amp', 0.1, 24], ['#acFreq', 'freq', 0.1, 5000], ['#acR', 'r', 0, 20]].forEach(([sel, key, lo, hi]) => {
+      const inp = $(sel);
+      if (!inp) return;
+      let touched = false;
+      inp.onfocus = () => { touched = false; };
+      inp.oninput = () => {
+        let v = parseFloat(inp.value);
+        if (!isFinite(v)) return;
+        v = clamp(v, lo, hi);
+        if (!touched) { pushHistory(); touched = true; }
+        c.params[key] = v;
+        // 不重建面板，否则输入框会失焦
+        solve(); renderAll(); renderTable(); renderDiag();
+        syncAc();
+      };
+    });
+    syncAc();
   } else {
     propPanel.querySelectorAll('input[type=number]').forEach(inp => {
       let touched = false;
@@ -2146,7 +2236,9 @@ function renderDiag() {
     if (c.type !== 'bulb') return;
     const r = state.result && state.result.compCurrent[c.id];
     if (!r) return;
-    const P = Math.abs(r.P);
+    // 超额定告警用平均功率（真实灯泡烧坏取决于热效应，交流下取滑动窗口均值）
+    const s = sim.t > 0 ? sim.rms[c.id] : null;
+    const P = s ? Math.abs(s.p) : Math.abs(r.P);
     if (P > c.params.ratedP * 1.2) {
       items.push({ t: 'err', m: `⚠ 小灯泡#${c.id.slice(1)} 实际功率 ${fmt(P)} W 超过额定 ${c.params.ratedP} W，可能烧坏。` });
     }
@@ -2504,6 +2596,7 @@ $('#btnRelay').onclick = () => loadPreset('relay');
 $('#btnCapDis').onclick = () => loadPreset('capdischarge');
 $('#btnInd').onclick = () => loadPreset('inductor');
 $('#btnAC').onclick = () => loadPreset('acrc');
+$('#btnRLC').onclick = () => loadPreset('rlc');
 $('#btnUndo').onclick = doUndo;
 $('#btnRedo').onclick = doRedo;
 $('#btnSave').onclick = saveCircuit;
@@ -2534,6 +2627,7 @@ function loadPreset(name, record = true) {
   if (record) pushHistory();
   if (sim.playing) simToggle();
   sim.t = 0; sim.samples = [];
+  sim.rms = {}; sim.sweep = null; sim.view = 'wave';
   state.components = []; state.wires = [];
   state.selected = null; state.selectedWire = null;
   const add = (type, x, y, params) => {
@@ -2690,6 +2784,25 @@ function loadPreset(name, record = true) {
     link(rw, 'b', cap, 'a');
     link(cap, 'b', ac, 'neg');
     state.selected = cap.id;
+  }
+
+  // RLC 串联谐振：f₀ = 1/(2π√(LC)) = 50.33 Hz（L=0.1H, C=100μF）
+  // 谐振时灯最亮、电容电压超电源峰值（Q≈4.9 倍过电压）；示波器「扫频分析」可实测幅频曲线
+  if (name === 'rlc') {
+    const ac = add('acsource', 200, 400, { amp: 2, freq: 50.33, r: 0.5 });
+    const am = add('idealAmmeter', 400, 400);
+    const bulb = add('bulb', 580, 400, { R: 6, ratedP: 0.5 });
+    const ind = add('inductor', 760, 400, { L: 0.1 });
+    const cap = add('capacitor', 940, 400, { C: 100 });
+    const vm = add('idealVoltmeter', 940, 620);
+    link(ac, 'pos', am, 'a');
+    link(am, 'b', bulb, 'a');
+    link(bulb, 'b', ind, 'a');
+    link(ind, 'b', cap, 'a');
+    link(cap, 'b', ac, 'neg', [{ x: 1030, y: 400 }, { x: 1030, y: 690 }, { x: 245, y: 690 }]);
+    link(cap, 'a', vm, 'a');
+    link(cap, 'b', vm, 'b');
+    state.selected = ac.id;
   }
 
   // 温控报警灯：温度升高 → 热敏电阻阻值下降 → 线圈电流增大 → 继电器吸合 → 报警灯亮
@@ -3155,7 +3268,7 @@ function setFb(el, msg, color) { el.textContent = msg; el.style.color = color; }
 /* ============================================================
    7.8 暂态仿真引擎（时间轴）与示波器
    ============================================================ */
-const sim = { playing: false, t: 0, dt: 0.0005, steps: 16, samples: [], scopeSel: '' };
+const sim = { playing: false, t: 0, dt: 0.0005, steps: 16, samples: [], scopeSel: '', rms: {}, view: 'wave', sweep: null };
 let simRAF = null;
 
 function simStep() {
@@ -3165,15 +3278,32 @@ function simStep() {
   state.components.forEach(c => {
     const r = state.result.compCurrent[c.id];
     if (!r) return;
-    // 后向欧拉状态更新
+    // 后向/梯形积分状态更新（梯形：二阶精度，无损，SPICE 默认方法）
     if (c.type === 'capacitor') {
+      // v(n+1) = v(n) + dt/(2C)·(i(n) + i(n+1))；i 存入 _i 供下一步历史源使用
       const Cf = Math.max(1e-9, (c.params.C || 100) * 1e-6);
-      c._v = Math.max(-1000, Math.min(1000, (c._v || 0) + r.I * sim.dt / Cf));
+      const iPrev = c._i || 0;
+      c._v = Math.max(-1000, Math.min(1000, (c._v || 0) + sim.dt / (2 * Cf) * (iPrev + r.I)));
+      c._i = r.I;
     }
     if (c.type === 'inductor') {
+      // i(n+1) = i(n) + dt/(2L)·(v(n) + v(n+1))；v 存入 _v 供下一步历史源使用
       const Lf = Math.max(1e-6, c.params.L || 1);
-      c._i = Math.max(-1000, Math.min(1000, (c._i || 0) + r.U * sim.dt / Lf));
+      const vPrev = c._v || 0;
+      c._i = Math.max(-1000, Math.min(1000, (c._i || 0) + sim.dt / (2 * Lf) * (vPrev + r.U)));
+      c._v = r.U;
     }
+  });
+  // 交流读数：指数滑动窗口的平方均值（τ=80 ms）→ 有效值 / 平均功率（正弦稳态下 = 峰值/√2）
+  const aR = Math.min(1, sim.dt / 0.08);
+  state.components.forEach(c => {
+    const r = state.result && state.result.compCurrent[c.id];
+    if (!r) return;
+    let s = sim.rms[c.id];
+    if (!s) s = sim.rms[c.id] = { u2: 0, i2: 0, p: 0 };
+    s.u2 += (r.U * r.U - s.u2) * aR;
+    s.i2 += (r.I * r.I - s.i2) * aR;
+    s.p  += (r.P - s.p) * aR;
   });
 }
 
@@ -3213,6 +3343,7 @@ function renderScope() {
   const W = cv.width, H = cv.height;
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.fillStyle = '#0b1220'; ctx.fillRect(0, 0, W, H);
+  if (sim.view === 'sweep' && sim.sweep) { renderSweepChart(ctx, W, H); return; }
   ctx.strokeStyle = '#1e293b'; ctx.lineWidth = 1;
   for (let gx = 0; gx <= W; gx += W / 12) { ctx.beginPath(); ctx.moveTo(gx, 0); ctx.lineTo(gx, H); ctx.stroke(); }
   for (let gy = 0; gy <= H; gy += H / 6) { ctx.beginPath(); ctx.moveTo(0, gy); ctx.lineTo(W, gy); ctx.stroke(); }
@@ -3242,6 +3373,73 @@ function renderScope() {
     ctx.fillStyle = '#94a3b8'; ctx.font = '12px sans-serif';
     ctx.fillText(it ? it.label + '（无数据）' : '——', 10, 16);
   }
+}
+
+/* ---- 扫频分析：逐频点重置暂态→步进到稳态→测稳态幅值，画幅频曲线 ---- */
+function renderSweepChart(ctx, W, H) {
+  const sw = sim.sweep;
+  const d = sw.data;
+  ctx.strokeStyle = '#1e293b'; ctx.lineWidth = 1;
+  for (let gx = 0; gx <= W; gx += W / 12) { ctx.beginPath(); ctx.moveTo(gx, 0); ctx.lineTo(gx, H); ctx.stroke(); }
+  for (let gy = 0; gy <= H; gy += H / 6) { ctx.beginPath(); ctx.moveTo(0, gy); ctx.lineTo(W, gy); ctx.stroke(); }
+  let amax = 1e-9;
+  d.forEach(p => { amax = Math.max(amax, p.amp); });
+  amax *= 1.15;
+  const X = f => (f - sw.f1) / (sw.f2 - sw.f1) * (W - 20) + 10;
+  const Y = v => H - 8 - (v / amax) * (H - 30);
+  // 理论谐振频率 f₀ 竖虚线（电路中有 L 和 C 时）
+  if (sw.f0 && sw.f0 >= sw.f1 && sw.f0 <= sw.f2) {
+    ctx.strokeStyle = '#facc15'; ctx.setLineDash([5, 4]); ctx.lineWidth = 1.2;
+    ctx.beginPath(); ctx.moveTo(X(sw.f0), 22); ctx.lineTo(X(sw.f0), H - 8); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = '#facc15'; ctx.font = '11px sans-serif';
+    ctx.fillText('f₀ = ' + sw.f0.toFixed(2) + ' Hz', Math.min(X(sw.f0) + 5, W - 110), 32);
+  }
+  ctx.strokeStyle = '#38bdf8'; ctx.lineWidth = 1.8;
+  ctx.beginPath();
+  d.forEach((p, i) => { const x = X(p.f), y = Y(p.amp); if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y); });
+  ctx.stroke();
+  // 实测峰值点
+  const pk = sw.peak;
+  ctx.fillStyle = '#f472b6';
+  ctx.beginPath(); ctx.arc(X(pk.f), Y(pk.amp), 3.5, 0, 7); ctx.fill();
+  ctx.fillStyle = '#94a3b8'; ctx.font = '12px sans-serif';
+  ctx.fillText(`幅频特性：${sw.label}｜f₁ = ${sw.f1} → f₂ = ${sw.f2} Hz｜峰 ${pk.f.toFixed(1)} Hz = ${pk.amp.toFixed(3)} ${sw.unit}`, 10, 16);
+}
+
+function runSweep() {
+  const ac = state.components.find(c => c.type === 'acsource');
+  if (!ac) { toast('扫频分析需要电路中有交流电源'); return; }
+  const list = scopeList();
+  const it = list[+($('#scopeSel').value || 0)];
+  if (!it) return;
+  const f1 = clamp(parseFloat($('#sweepF1').value) || 10, 0.1, 5000);
+  const f2 = clamp(parseFloat($('#sweepF2').value) || 150, f1, 5000);
+  const N = 61;
+  const savedFreq = ac.params.freq;
+  const settle = Math.max(400, Math.round(5 / f1 / sim.dt));   // 每个频点先步进到稳态：≥5 个最低频周期
+  const data = [];
+  if (sim.playing) simToggle();   // 先停掉 rAF 循环
+  for (let i = 0; i < N; i++) {
+    const f = f1 + (f2 - f1) * i / (N - 1);
+    const meas = Math.max(60, Math.round(2 / f / sim.dt));   // 测量窗：≥2 个周期取幅值
+    ac.params.freq = f;
+    simReset(true);
+    for (let k = 0; k < settle; k++) simStep();
+    let amp = 0;
+    for (let k = 0; k < meas; k++) { simStep(); const v = Math.abs(it.get()); if (v > amp) amp = v; }
+    data.push({ f, amp });
+  }
+  simReset(true);
+  ac.params.freq = savedFreq;    // 恢复原频率，回到稳态显示
+  const peak = data.reduce((a, b) => (b.amp > a.amp ? b : a), data[0]);
+  const rl = rlcParams();
+  sim.sweep = { data, f1, f2, label: it.label, unit: it.unit, peak, f0: rl ? rl.f0 : null };
+  sim.view = 'sweep';
+  $('#btnWave').style.display = '';
+  renderScope();
+  toast('扫频完成：峰值 ' + peak.f.toFixed(1) + ' Hz = ' + peak.amp.toFixed(3) + ' ' + it.unit
+    + (rl ? '（理论 f₀ = ' + rl.f0.toFixed(2) + ' Hz）' : ''));
 }
 
 function simFrame() {
@@ -3274,15 +3472,18 @@ function simToggle() {
   }
 }
 
-function simReset() {
+function simReset(quiet) {
   sim.playing = false;
   if (simRAF) { cancelAnimationFrame(simRAF); simRAF = null; }
   sim.t = 0; sim.samples = [];
+  sim.rms = {}; sim.sweep = null; sim.view = 'wave';
   state.components.forEach(c => { delete c._v; delete c._i; delete c._nl; });
   $('#btnSim').textContent = '▶ 暂态仿真';
   $('#simTime').textContent = 't = 0.000 s';
+  const bw = $('#btnWave');
+  if (bw) bw.style.display = 'none';
   refresh();
-  toast('仿真已重置');
+  if (!quiet) toast('仿真已重置');
 }
 
 $('#btnSim').onclick = simToggle;
@@ -3292,8 +3493,10 @@ $('#btnScope').onclick = () => {
   p.style.display = p.style.display === 'none' ? 'block' : 'none';
   rebuildScopeSel(); renderScope();
 };
-$('#scopeSel').onchange = () => { sim.scopeSel = $('#scopeSel').value; renderScope(); };
+$('#scopeSel').onchange = () => { sim.scopeSel = $('#scopeSel').value; sim.view = 'wave'; $('#btnWave').style.display = 'none'; renderScope(); };
 $('#simSpeed').onchange = () => { sim.steps = parseInt($('#simSpeed').value, 10) || 16; };
+$('#btnSweep').onclick = runSweep;
+$('#btnWave').onclick = () => { sim.view = 'wave'; $('#btnWave').style.display = 'none'; renderScope(); };
 
 /* ---- 模板库 ---- */
 const TEMPLATES = [
@@ -3307,7 +3510,8 @@ const TEMPLATES = [
   { id: 'relay', name: '温控报警灯', desc: '热敏+继电器：温度拉到约 92℃ 吸合报警' },
   { id: 'capdischarge', name: '电容充放电', desc: 'SPDT 切换充/放电，电流方向反转（暂态）' },
   { id: 'inductor', name: '自感现象', desc: '通电 B 灯先亮 A 灯慢亮；断电续流反向（暂态）' },
-  { id: 'acrc', name: '交流 RC', desc: '示波器观察正弦激励与电容电压相位滞后（暂态）' }
+  { id: 'acrc', name: '交流 RC', desc: '示波器观察正弦激励与电容电压相位滞后（暂态）' },
+  { id: 'rlc', name: 'RLC 串联谐振', desc: '扫频找谐振峰 f₀=50.3Hz：谐振时灯最亮、电容电压超电源（暂态）' }
 ];
 const TPL_KEY = 'circuit-user-templates-v1';
 function userTplList() {
@@ -3401,7 +3605,7 @@ $('#tplSave').onclick = () => {
 buildGrid();
 initTools();
 loadPreset('series', false);
-window.__demo = { loadPreset, state, solve, refresh, doUndo, doRedo, history, sim, simStep, simReset };
+window.__demo = { loadPreset, state, solve, refresh, doUndo, doRedo, history, sim, simStep, simReset, runSweep, rlcParams };
 requestAnimationFrame(function loop() {
   renderDots();
   requestAnimationFrame(loop);
