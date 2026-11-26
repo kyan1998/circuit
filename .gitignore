@@ -1,0 +1,8 @@
+# 工作区临时文件
+.zwork/
+*.zwork/
+
+# 系统文件
+Thumbs.db
+desktop.ini
+.DS_Store
