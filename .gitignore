@@ -6,6 +6,8 @@
 
 # 桌面版构建产物（体积大，不入库；HTML 与打包脚本入库）
 node_modules/
+CircuitLab-win64/
+CircuitLab-win64.zip
 桌面版-win64/
 电路可视化-win64.zip
 
