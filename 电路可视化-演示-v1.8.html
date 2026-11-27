@@ -1322,21 +1322,28 @@ function renderAll() {
   // ---- 元件 ----
   layerComps.innerHTML = '';
   state.components.forEach(c => {
+    const vert = (((c.rot || 0) % 180) + 180) % 180 === 90;   // 90/270 → 占地宽高互换
+    const hw = vert ? DEFS[c.type].h : DEFS[c.type].w;
+    const hh = vert ? DEFS[c.type].w : DEFS[c.type].h;
     const g = el('g', {
       class: 'comp' + (state.selected === c.id ? ' selected' : ''),
-      transform: `translate(${c.x},${c.y})${c.rot ? ` rotate(${c.rot})` : ''}`,
+      // v1.8 修复：组只平移；旋转只在符号层做一次（原来组+符号层各转一次→叠成 2×rot）
+      transform: `translate(${c.x},${c.y})`,
       'data-comp': c.id
     });
     const hit = el('rect', {
-      x: -DEFS[c.type].w / 2 - 8, y: -DEFS[c.type].h / 2 - 8,
-      width: DEFS[c.type].w + 16, height: DEFS[c.type].h + 16,
+      x: -hw / 2 - 8, y: -hh / 2 - 8,
+      width: hw + 16, height: hh + 16,
       class: 'comp-hit', 'data-comp': c.id
     });
     g.appendChild(hit);
     drawBody(c, g);
-    // 编号标注（v1.8）：水平放在元件上方，不随旋转
+    // 编号标注（v1.8）：水平放在元件外侧，不随旋转；竖放时标在左侧
     if (c.id && c.label) {
-      const t = el('text', { x: 0, y: -DEFS[c.type].h / 2 - 8, 'text-anchor': 'middle',
+      const lt = vert
+        ? { x: -hw / 2 - 8, y: 4, anchor: 'end' }
+        : { x: 0, y: -hh / 2 - 8, anchor: 'middle' };
+      const t = el('text', { x: lt.x, y: lt.y, 'text-anchor': lt.anchor,
         'font-size': 10.5, fill: '#6b7a90', 'font-family': 'inherit', 'font-weight': '600' });
       t.textContent = c.label;
       g.appendChild(t);
@@ -1344,8 +1351,9 @@ function renderAll() {
     DEFS[c.type].pins.forEach(p => {
       const hot = state.wiring &&
         state.wiring.from.c === c.id && state.wiring.from.p === p.id;
+      const po = rotOff(c.rot || 0, p.x, p.y);   // 接线柱随元件旋转（v1.8 修复：与符号同角度）
       const pc = el('circle', {
-        cx: p.x, cy: p.y, r: 6,
+        cx: po.x, cy: po.y, r: 6,
         class: 'pin' + (hot ? ' hot' : ''),
         'data-comp': c.id, 'data-pin': p.id
       });
