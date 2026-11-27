@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>电路可视化 · v1.8 演示</title>
+<title>电路可视化 · v1.9 演示</title>
 <style>
   :root{
     --bg:#eef1f6; --panel:#ffffff; --line:#dde4ee; --text:#1b2536; --muted:#6b7a90;
@@ -49,29 +49,40 @@
   /* ---------- 主体 ---------- */
   .main{display:flex; flex:1 1 auto; min-height:0;}
 
-  /* 左：元件库 */
+  /* 左：元件库（v1.9：窄条分类栏 + 点击向右展开浮层） */
   .palette{
-    width:118px; flex:0 0 auto; background:var(--panel); border-right:1px solid var(--line);
-    padding:12px 8px; display:flex; flex-direction:column; gap:8px; overflow-y:auto;
+    width:54px; flex:0 0 auto; background:var(--panel); border-right:1px solid var(--line);
+    padding:8px 4px; display:flex; flex-direction:column; gap:3px; overflow-y:auto;
+    position:relative;
   }
-  .palette h2{font-size:11px; color:var(--muted); margin:2px 4px 4px; font-weight:600;
-    letter-spacing:.6px; text-transform:uppercase;}
+  .palette h2{font-size:10px; color:var(--muted); margin:0 0 4px; font-weight:600;
+    text-align:center; letter-spacing:2px;}
+  .pal-cat{font-size:11px; color:var(--text); text-align:center;
+    padding:6px 0; border-radius:8px; cursor:pointer; line-height:1.25;
+    border:1px solid transparent; transition:all .15s;}
+  .pal-cat:hover{background:var(--accent-soft);}
+  .pal-cat.on{background:var(--accent); color:#fff; border-color:var(--accent);}
+  .pal-flyout{
+    position:absolute; left:100%; top:0; width:164px;
+    background:var(--panel); border:1px solid var(--line); border-radius:0 12px 12px 0;
+    box-shadow:8px 0 24px rgba(15,23,42,.18); padding:8px; z-index:25;
+    max-height:100%; overflow-y:auto;
+  }
+  .pal-flyout-head{display:flex; align-items:center; justify-content:space-between; margin-bottom:6px;}
+  .pal-flyout-head span{font-size:12px; font-weight:600; color:var(--text);}
+  .pal-flyout-head .btn{height:22px; padding:0 8px; font-size:11px;}
   .pal-item{
     display:flex; flex-direction:column; align-items:center; gap:2px;
-    padding:8px 4px 6px; border:1px solid transparent; border-radius:8px;
+    padding:6px 2px 4px; border:1px solid transparent; border-radius:8px;
     cursor:grab; user-select:none; transition:all .15s;
   }
   .pal-item:hover{background:var(--accent-soft); border-color:#c3d7fb;}
   .pal-item:active{cursor:grabbing;}
-  .pal-item svg{width:88px; height:34px; overflow:visible;}
-  .pal-item span{font-size:11.5px; color:var(--text);}
-  #paletteItems{display:flex; flex-direction:column; gap:6px;}
-  /* 元件库分类标题（v1.5） */
-  .pal-cat{font-size:10.5px; color:var(--muted); margin:10px 4px 0;
-    font-weight:600; letter-spacing:1px;}
-  #paletteItems > .pal-cat:first-child{margin-top:0;}
-  .pal-hint{font-size:11px; color:var(--muted); line-height:1.6; padding:8px 6px;
-    border-top:1px solid var(--line); margin-top:auto;}
+  .pal-item svg{width:92px; height:34px; overflow:visible;}
+  .pal-item span{font-size:11px; color:var(--text);}
+  #paletteItems{display:flex; flex-direction:column; gap:4px;}
+  .pal-hint{font-size:10.5px; color:var(--muted); line-height:1.7; padding:8px 2px;
+    border-top:1px solid var(--line); margin-top:auto; text-align:center;}
 
   /* 中：画布 */
   .stage{flex:1 1 auto; position:relative; min-width:0; background:#fbfcfe;}
@@ -111,7 +122,7 @@
 
   /* 右：面板 */
   .side{
-    width:268px; flex:0 0 auto; background:var(--panel); border-left:1px solid var(--line);
+    width:302px; flex:0 0 auto; background:var(--panel); border-left:1px solid var(--line);
     display:flex; flex-direction:column; overflow-y:auto;
   }
   .side section{padding:12px 14px; border-bottom:1px solid var(--line);}
@@ -155,13 +166,9 @@
   @media (max-width: 900px){
     .app{height:auto; min-height:100vh;}
     .main{flex-direction:column;}
-    .palette{width:100%; flex-direction:row; overflow-x:auto;
-      border-right:none; border-bottom:1px solid var(--line); padding:8px; gap:4px;}
+    .palette{width:54px;}
     .palette h2,.pal-hint{display:none;}
-    .pal-cat{display:none;}
-    #paletteItems{flex-direction:row; gap:2px;}
-    .pal-item{flex:0 0 auto; padding:6px 6px;}
-    .pal-item svg{width:76px;}
+    .pal-flyout{top:0; max-height:100%;}
     .stage{min-height:420px; flex:0 0 auto;}
     .side{width:100%;}
     .topbar{flex-wrap:wrap; gap:8px;}
@@ -200,7 +207,7 @@
    /* 投影模式（v1.8）：教室大屏大字号高对比 */
    body.projector svg text{font-size:15.5px;}
    body.projector .wire{stroke-width:2.6;}
-   body.projector .side{width:312px;}
+   body.projector .side{width:352px;}
    body.projector .side section{padding:14px 16px;}
    body.projector table{font-size:14px;}
    body.projector th{font-size:12px;}
@@ -236,7 +243,7 @@
 <body>
 <div class="app">
   <header class="topbar">
-    <div class="brand"><h1>电路可视化</h1><span>v1.8</span></div>
+    <div class="brand"><h1>电路可视化</h1><span>v1.9</span></div>
     <div class="spacer"></div>
     <div class="btn-group">
     <div class="sep"></div>
@@ -279,10 +286,14 @@
   </header>
 
   <div class="main">
-    <aside class="palette">
-      <h2>元件库</h2>
-      <div id="paletteItems"></div>
-      <div class="pal-hint">拖到画布放置<br>点引脚 → 拉到另一个引脚<br>点导线可选中删除<br>滚轮缩放 · 空白处拖动平移</div>
+    <aside class="palette" id="palette">
+      <h2>元件</h2>
+      <div id="paletteCats"></div>
+      <div class="pal-flyout" id="palFlyout" style="display:none">
+        <div class="pal-flyout-head"><span id="palFlyoutTitle"></span><button class="btn" id="palFlyoutClose" title="收起">◀ 收起</button></div>
+        <div id="paletteItems"></div>
+      </div>
+      <div class="pal-hint">点分类展开<br>拖元件到画布<br>点引脚连线<br>滚轮缩放 · 拖动平移</div>
     </aside>
 
     <section class="stage">
@@ -498,6 +509,21 @@
         <div id="propPanel"><div class="empty">点击画布上的元件</div></div>
       </section>
       <section>
+        <h3>实验数据（伏安法）</h3>
+        <select id="sideExpMode" style="width:100%;padding:4px 6px;border:1px solid var(--line);border-radius:8px;font-family:inherit;font-size:12px">
+          <option value="bulb">伏安特性曲线（U-I）</option>
+          <option value="resistor">测电阻（拟合 R）</option>
+          <option value="emf">测电源 E、r</option>
+        </select>
+        <div style="display:flex;gap:6px;margin-top:6px">
+          <button class="btn" id="sideExpCap" style="flex:1">◉ 采一组数据</button>
+          <button class="btn" id="sideExpClear" style="flex:0 0 auto">清空</button>
+        </div>
+        <div id="sideExpList" style="font-size:11.5px;line-height:1.8;margin-top:6px;max-height:132px;overflow-y:auto"></div>
+        <div id="sideExpFit" style="font-size:12px;color:#1b2536;line-height:1.7;margin-top:4px;white-space:pre-wrap"></div>
+        <button class="btn" id="sideExpOpen" style="width:100%;margin-top:6px">打开完整面板（图表 / 导出）</button>
+      </section>
+      <section>
         <h3>读数</h3>
         <table>
           <thead><tr><th>元件</th><th>U/V</th><th>I/A</th><th>P/W</th></tr></thead>
@@ -680,7 +706,8 @@ const DEFS = {
   }
 };
 
-const WIRE_R = 1e-3;   // 导线等效电阻（Ω）
+const WIRE_R = 1e-6;   // 导线等效电阻（Ω）。保留 µΩ 级电阻才能算出“导线里的电流”（电流动画）；
+                       // v1.9 由 1mΩ 降至 1µΩ：理想电表/实验数据读数与手算一致到三位小数（3V·1Ω·2Ω → 1A/2V）
 const LEAK_G = 1e-10;  // 节点对地泄漏电导，防悬空节点奇异
 
 /* ============================================================
@@ -2766,16 +2793,13 @@ const PAL_GROUPS = [
 const PAL_TYPES = PAL_GROUPS.flatMap(g => g[1]);
 const PAL_CAT_OF = {};
 PAL_GROUPS.forEach(([name, types]) => types.forEach(t => { PAL_CAT_OF[t] = name; }));
+const PAL_SHORT = { '电源': '电源', '电阻与变阻': '电阻', '开关': '开关', '电表': '电表',
+  '负载与控制': '负载', '半导体': '半导体', '储能': '储能', '连接': '连接' };
+const paletteCats = $('#paletteCats');
 const paletteItems = $('#paletteItems');
-let lastPalCat = null;
-PAL_TYPES.forEach(type => {
-  if (PAL_CAT_OF[type] !== lastPalCat) {
-    lastPalCat = PAL_CAT_OF[type];
-    const h = document.createElement('div');
-    h.className = 'pal-cat';
-    h.textContent = lastPalCat;
-    paletteItems.appendChild(h);
-  }
+let palOpenCat = null;
+// 生成单个元件卡片（含拖拽/放置逻辑，v1.9 折叠栏每次展开重新生成）
+function palItemEl(type) {
   const item = document.createElement('div');
   item.className = 'pal-item';
   item.dataset.type = type;
@@ -2803,9 +2827,34 @@ PAL_TYPES.forEach(type => {
     state.placing.y = Math.round(p.y / 10) * 10;
     renderAll();
   });
-
-  paletteItems.appendChild(item);
+  return item;
+}
+function palOpen(name) {
+  palOpenCat = name;
+  const group = PAL_GROUPS.find(g2 => g2[0] === name);
+  $('#palFlyoutTitle').textContent = name + '（拖到画布）';
+  paletteItems.innerHTML = '';
+  group[1].forEach(t => paletteItems.appendChild(palItemEl(t)));
+  $('#palFlyout').style.display = 'block';
+  document.querySelectorAll('.pal-cat').forEach(b => b.classList.toggle('on', b.dataset.cat === name));
+}
+function palClose() {
+  palOpenCat = null;
+  $('#palFlyout').style.display = 'none';
+  document.querySelectorAll('.pal-cat').forEach(b => b.classList.remove('on'));
+}
+PAL_GROUPS.forEach(([name]) => {
+  const b = document.createElement('div');
+  b.className = 'pal-cat';
+  b.dataset.cat = name;
+  b.textContent = PAL_SHORT[name] || name;
+  b.title = name;
+  b.onclick = () => { palOpenCat === name ? palClose() : palOpen(name); };
+  paletteCats.appendChild(b);
 });
+$('#palFlyoutClose').onclick = palClose;
+// 点击画布空白收起浮层（拖拽放置不受影响）
+canvas.addEventListener('pointerdown', () => { if (palOpenCat) palClose(); });
 
 /* ---- 顶栏按钮 ---- */
 $('#btnClear').onclick = () => {
@@ -4115,6 +4164,8 @@ function expMode() { return $('#expMode') ? $('#expMode').value : 'bulb'; }
 function expCapture() {
   const c = state.components.find(x => x.id === state.selected);
   if (!c || c.type === 'junc') { toast('先在画布上选中要测量的元件（电阻/灯泡）或电源'); return; }
+  // 采点前重解当前状态（静态重解静态、暂态重解暂态），保证读数对应当前电路参数
+  if (!sim.playing) { if (sim.t > 0) solve(sim.t, sim.dt, true); else solve(); }
   const r = state.result && state.result.compCurrent[c.id];
   if (!r) { toast('还没有解算结果——先接好电路'); return; }
   const u = Math.abs(r.U), i = Math.abs(r.I);
@@ -4156,6 +4207,16 @@ function expRender() {
   $('#expClear').disabled = !expRows.length;
   $('#expCsv').disabled = !expRows.length;
   const m = expMode();
+  const sm = $('#sideExpMode');
+  if (sm && sm.value !== m) sm.value = m;   // 侧栏/弹窗两处模式选择器同步
+  // 右侧栏常驻列表（v1.9）
+  const sl = $('#sideExpList');
+  if (sl) {
+    sl.innerHTML = expRows.map((r, k) =>
+      `<div data-k="${k}" style="padding:2px 5px;border-radius:5px;${k === expSelRow ? 'background:#dbeafe;' : ''}cursor:pointer">${k + 1}. <b>${r.label}</b>｜U=${r.u.toFixed(3)}V｜I=${r.i.toFixed(4)}A</div>`).join('')
+      || '<div style="color:#9aa8bd">还没有数据——选中元件后点「采一组数据」</div>';
+    sl.querySelectorAll('[data-k]').forEach(el2 => { el2.onclick = () => { expSelRow = +el2.dataset.k; expRender(); }; });
+  }
   $('#expHint').textContent =
     m === 'bulb' ? '当前：伏安特性曲线——调节电压/变阻器改变读数，每变一次点「采一组数据」；灯泡图线弯曲 = 灯丝电阻随温度变化。'
     : m === 'resistor' ? '当前：测电阻——选中定值电阻采 3–5 组点，拟合直线过原点，斜率即电阻 R。'
@@ -4164,13 +4225,16 @@ function expRender() {
   expShowFit();
 }
 function expShowFit() {
-  const fit = expFit(), box = $('#expFit');
-  if (!fit) { box.textContent = expRows.length < 2 ? '（采 2 组以上数据后自动拟合）' : ''; return; }
-  if (fit.type === 'emf') {
-    box.innerHTML = `最小二乘拟合：U = ${fit.E.toFixed(3)} − ${Math.abs(fit.b).toFixed(3)}·I\n→ 电动势 <b>E ≈ ${fit.E.toFixed(3)} V</b>，内阻 <b>r ≈ ${fit.r.toFixed(3)} Ω</b>`;
-  } else {
-    box.innerHTML = `过原点最小二乘拟合：R = U/I = <b>${fit.k.toFixed(3)} Ω</b>`;
-  }
+  const fit = expFit();
+  const txt = (!fit)
+    ? (expRows.length < 2 ? '（采 2 组以上数据后自动拟合）' : '')
+    : fit.type === 'emf'
+      ? `最小二乘拟合：U = ${fit.E.toFixed(3)} − ${Math.abs(fit.b).toFixed(3)}·I\n→ 电动势 E ≈ ${fit.E.toFixed(3)} V，内阻 r ≈ ${fit.r.toFixed(3)} Ω`
+      : `过原点最小二乘拟合：R = U/I = ${fit.k.toFixed(3)} Ω`;
+  const box = $('#expFit');
+  if (box) box.innerHTML = txt.replace(/\n/g, '<br>');
+  const side = $('#sideExpFit');
+  if (side) side.textContent = txt;
 }
 function expDraw() {
   const cv = $('#expCanvas'), ctx = cv.getContext('2d');
@@ -4243,6 +4307,10 @@ function initExp() {
   $('#btnExp').onclick = () => { $('#expModal').classList.add('open'); expRender(); };
   $('#expClose').onclick = () => $('#expModal').classList.remove('open');
   $('#expMode').onchange = expRender;
+  $('#sideExpMode').onchange = () => { $('#expMode').value = $('#sideExpMode').value; expRender(); };
+  $('#sideExpCap').onclick = expCapture;
+  $('#sideExpClear').onclick = () => { expRows = []; expSelRow = -1; expSave(); expRender(); };
+  $('#sideExpOpen').onclick = () => { $('#expModal').classList.add('open'); expRender(); };
   $('#expCap').onclick = expCapture;
   $('#expDelRow').onclick = () => { if (expSelRow >= 0) { expRows.splice(expSelRow, 1); expSelRow = -1; expSave(); expRender(); } };
   $('#expClear').onclick = () => { expRows = []; expSelRow = -1; expSave(); expRender(); };
