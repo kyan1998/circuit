@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>电路可视化 · v1.7 演示</title>
+<title>电路可视化 · v1.8 演示</title>
 <style>
   :root{
     --bg:#eef1f6; --panel:#ffffff; --line:#dde4ee; --text:#1b2536; --muted:#6b7a90;
@@ -197,6 +197,27 @@
    .tool-drag{cursor:ew-resize;}
    .tool-note{font-size:12px;color:#9aa8bd;margin-top:6px;line-height:1.8;}
 
+   /* 投影模式（v1.8）：教室大屏大字号高对比 */
+   body.projector svg text{font-size:15.5px;}
+   body.projector .wire{stroke-width:2.6;}
+   body.projector .side{width:312px;}
+   body.projector .side section{padding:14px 16px;}
+   body.projector table{font-size:14px;}
+   body.projector th{font-size:12px;}
+   body.projector .diag-item{font-size:14px;}
+   body.projector .prop-row{font-size:14.5px;}
+   body.projector .prop-row input[type=number]{width:100px;font-size:14px;}
+   body.projector .topbar .btn{height:36px;padding:0 16px;font-size:14px;}
+   body.projector .brand h1{font-size:18px;}
+   body.projector .pal-item span{font-size:13px;}
+   body.projector .pal-cat{font-size:12px;}
+   body.projector #simTime{font-size:14px;}
+
+   /* 实验数据面板（v1.8） */
+   #expRows tr{cursor:pointer;}
+   #expRows tr.sel td{background:#dbeafe;}
+   #expFit{white-space:pre-wrap;}
+
    /* 新手引导（v1.7） */
    .guide-spot{position:fixed;z-index:100;border:2px solid var(--accent);border-radius:12px;
      box-shadow:0 0 0 9999px rgba(15,23,42,.55);pointer-events:none;transition:all .25s;}
@@ -215,7 +236,7 @@
 <body>
 <div class="app">
   <header class="topbar">
-    <div class="brand"><h1>电路可视化</h1><span>v1.7</span></div>
+    <div class="brand"><h1>电路可视化</h1><span>v1.8</span></div>
     <div class="spacer"></div>
     <div class="btn-group">
     <div class="sep"></div>
@@ -239,6 +260,7 @@
     </div>
     <div class="sep"></div>
     <button class="btn" id="btnTools">测量工具</button>
+    <button class="btn" id="btnExp" title="伏安法采点、描点与拟合">实验数据</button>
     <div class="sep"></div>
     <button class="btn" id="btnSim">▶ 暂态仿真</button>
     <button class="btn" id="btnSimReset">仿真重置</button>
@@ -252,6 +274,7 @@
     <div class="sep"></div>
     <button class="btn" id="btnTemplates">模板库</button>
     <button class="btn" id="btnGuide" title="第一次使用的操作引导，随时可重看">新手引导</button>
+    <button class="btn" id="btnProjector" title="教室大屏：大字号高对比">投影模式</button>
     <input type="file" id="fileInput" accept=".json,application/json" hidden>
   </header>
 
@@ -372,6 +395,43 @@
             </div>
             <div class="tool-fb" id="cvFb" style="white-space:pre-wrap"></div>
             <div class="tool-note" id="cvNote"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="modal-backdrop" id="expModal">
+        <div class="modal" style="width:min(1080px,96vw)">
+          <div style="display:flex;align-items:center;justify-content:space-between">
+            <h2 style="margin:0;font-size:16px">实验数据（伏安法采点与拟合）</h2>
+            <button class="btn" id="expClose">关闭</button>
+          </div>
+          <div style="display:flex;gap:16px;margin-top:10px;flex-wrap:wrap">
+            <div style="flex:1;min-width:340px">
+              <div class="tool-ui">
+                <span style="font-size:12px;color:#6b7a90">实验类型：</span>
+                <select id="expMode" style="flex:1;padding:4px 6px;border:1px solid var(--line);border-radius:8px;font-family:inherit">
+                  <option value="bulb">伏安特性曲线（U-I）</option>
+                  <option value="resistor">测电阻（拟合 R = U/I）</option>
+                  <option value="emf">测电源电动势和内阻（U = E − rI）</option>
+                </select>
+              </div>
+              <div class="tool-ui">
+                <button class="btn" id="expCap">◉ 采一组数据</button>
+                <button class="btn" id="expDelRow" disabled>删除选中行</button>
+                <button class="btn" id="expClear" disabled>清空</button>
+                <button class="btn" id="expCsv" disabled>导出 CSV</button>
+              </div>
+              <div style="font-size:12px;color:#6b7a90;margin:6px 0;line-height:1.7" id="expHint"></div>
+              <table style="width:100%">
+                <thead><tr><th>#</th><th>元件</th><th>U/V</th><th>I/A</th><th>R=U/I/Ω</th></tr></thead>
+                <tbody id="expRows"></tbody>
+              </table>
+              <div class="tool-fb" id="expFb" style="margin-top:8px"></div>
+            </div>
+            <div style="flex:1;min-width:360px">
+              <canvas id="expCanvas" width="600" height="430" style="width:100%;border:1px solid var(--line);border-radius:10px;background:#fff"></canvas>
+              <div id="expFit" style="font-size:13px;color:#1b2536;margin-top:8px;line-height:1.8"></div>
+            </div>
           </div>
         </div>
       </div>
@@ -666,8 +726,58 @@ function normalizeComps(list) {
   return list.map(c => {
     const d = DEFS[c.type];
     if (!d) return c;
-    return Object.assign({}, c, { params: Object.assign({}, d.params, c.params || {}) });
+    const o = Object.assign({}, c, { params: Object.assign({}, d.params, c.params || {}) });
+    if (typeof o.rot !== 'number') o.rot = 0;   // v1.8 旋转角
+    return o;
   });
+}
+
+// 元件自动编号（v1.8）：R1/C1/S1/A1/E1…前缀按类型，计数只增不减，随存档保存
+const LABEL_PREFIX = { battery: 'E', acsource: 'U', resistor: 'R', resbox: 'R', rheostat: 'R', metalwire: 'W',
+  bulb: 'L', motor: 'M', switch: 'S', spdt: 'S', dpdt: 'S', ammeter: 'A', idealAmmeter: 'A', galvanometer: 'G',
+  voltmeter: 'V', idealVoltmeter: 'V', diode: 'D', led: 'D', capacitor: 'C', inductor: 'L',
+  thermistor: 'RT', photoresistor: 'RL', relay: 'K' };
+function nextLabel(list, prefix) {
+  let n = 0;
+  list.forEach(c => {
+    if ((c.label || '').startsWith(prefix)) {
+      const m = parseInt(c.label.slice(prefix.length), 10);
+      if (Number.isFinite(m) && m > n) n = m;
+    }
+  });
+  return prefix + (n + 1);
+}
+function ensureLabels() {
+  state.components.forEach(c => {
+    if (!c.label && LABEL_PREFIX[c.type]) c.label = nextLabel(state.components, LABEL_PREFIX[c.type]);
+  });
+}
+function assignLabel(c) {
+  if (!c.label && LABEL_PREFIX[c.type]) c.label = nextLabel(state.components, LABEL_PREFIX[c.type]);
+}
+// 复制 / 粘贴（v1.8）：Ctrl+C / Ctrl+V，只复制元件本体（含参数与旋转角）
+let clip = null, pasteCount = 0;
+function copySelected() {
+  const c = state.components.find(x => x.id === state.selected);
+  if (!c) { toast('先选中要复制的元件'); return; }
+  clip = JSON.parse(JSON.stringify({ type: c.type, params: c.params, rot: c.rot || 0 }));
+  toast('已复制（Ctrl+V 粘贴）');
+}
+function pasteClip() {
+  if (!clip) { toast('剪贴板是空的——先选中元件按 Ctrl+C'); return; }
+  const base = state.components.find(x => x.id === state.selected);
+  const k = (++pasteCount) % 6;
+  const c = {
+    id: nid(), type: clip.type,
+    x: (base ? base.x : 550) + 46 + k * 6, y: (base ? base.y : 380) + 46 + k * 6,
+    params: { ...clip.params }, rot: clip.rot || 0
+  };
+  state.components.push(c);
+  assignLabel(c);
+  state.selected = c.id;
+  pushHistory();
+  refresh();
+  toast('已粘贴 ' + (c.label || DEFS[c.type].name));
 }
 
 function restoreFrom(s) {
@@ -679,6 +789,7 @@ function restoreFrom(s) {
   state.wiring = null;
   state.drag = null;
   state.placing = null;
+  ensureLabels();
   sim.rms = {}; sim.sweep = null; sim.view = 'scope';
   refresh();
 }
@@ -760,6 +871,7 @@ function loadCircuitFile(file) {
       if (!Array.isArray(o.components) || !Array.isArray(o.wires)) throw new Error('bad');
       pushHistory();
       state.components = normalizeComps(o.components);
+      ensureLabels();
       state.wires = o.wires;
       state.selected = null; state.selectedWire = null;
       refresh();
@@ -787,11 +899,17 @@ function drawBody(c, g, scale = 1) {
   const p = c.params;
   const S = { stroke: '#1b2536', 'stroke-width': 2, fill: 'none',
               'stroke-linecap': 'round', 'stroke-linejoin': 'round' };
-  const add = (tag, attrs) => { const e = el(tag, { ...S, ...attrs }); g.appendChild(e); return e; };
+  // v1.8：符号层随元件旋转，文字层保持水平，保证任意角度下标注可读
+  const sGroup = el('g');
+  if (c.rot) sGroup.setAttribute('transform', `rotate(${c.rot})`);
+  g.appendChild(sGroup);
+  const tGroup = el('g');
+  g.appendChild(tGroup);
+  const add = (tag, attrs) => { const e = el(tag, { ...S, ...attrs }); sGroup.appendChild(e); return e; };
   const txt = (str, x, y, size = 10.5, color = '#6b7a90', anchor = 'middle', weight = '400') => {
     const t = el('text', { x, y, 'font-size': size, fill: color, 'text-anchor': anchor,
       'font-weight': weight, 'font-family': 'inherit' });
-    t.textContent = str; g.appendChild(t); return t;
+    t.textContent = str; tGroup.appendChild(t); return t;
   };
 
   switch (c.type) {
@@ -837,7 +955,8 @@ function drawBody(c, g, scale = 1) {
       for (let i = -18; i <= 14; i += 6)
         add('line', { x1: i, y1: 12, x2: i + 5, y2: -12, 'stroke-width': 1.1 });
       add('line', { x1: 22, y1: 0, x2: PIN_X, y2: 0 });
-      g.appendChild(el('rect', { x: -14, y: -4, width: 28, height: 11, fill: '#fff', stroke: 'none' }));
+      // 白底垫在文字下方（放文字层：随文字保持水平，v1.8）
+      tGroup.appendChild(el('rect', { x: -14, y: -4, width: 28, height: 11, fill: '#fff', stroke: 'none' }));
       const mR = dynR(c);
       if (mR) txt(`${fmt(mR)} Ω`, 0, 4, 9.5, '#1b2536', 'middle', '600');
       break;
@@ -852,7 +971,7 @@ function drawBody(c, g, scale = 1) {
       add('line', { x1: -PIN_X, y1: 0, x2: -16, y2: 0 });
       const glow = el('circle', { cx: 0, cy: 0, r: 30, fill: 'url(#bulbGlow)',
         class: 'bulb-glow', opacity: 0 });
-      g.appendChild(glow);
+      sGroup.appendChild(glow);
       add('circle', { cx: 0, cy: 0, r: 16 });
       add('line', { x1: -11.3, y1: -11.3, x2: 11.3, y2: 11.3, 'stroke-width': 1.6 });
       add('line', { x1: -11.3, y1: 11.3, x2: 11.3, y2: -11.3, 'stroke-width': 1.6 });
@@ -907,7 +1026,7 @@ function drawBody(c, g, scale = 1) {
       add('line', { x1: 0, y1: -36, x2: 0, y2: -24 });
       add('line', { x1: 0, y1: -24, x2: xw, y2: -11, 'stroke-width': 2 });
       const ang = Math.atan2(13, xw) * 180 / Math.PI;
-      g.appendChild(el('path', {
+      sGroup.appendChild(el('path', {
         d: 'M -5.5,-4.5 L 6,0 L -5.5,4.5 Z', fill: '#1b2536',
         transform: `translate(${xw},${-11}) rotate(${ang})`
       }));
@@ -915,7 +1034,7 @@ function drawBody(c, g, scale = 1) {
       txt(`${p.R} Ω`, 0, 4, 10.5, '#1b2536', 'middle', '500');
       txt(`${Math.round(t * 100)}%`, 0, 30, 10, '#6b7a90');
       // 滑片拖拽热区（仅画布上的实例需要，元件库缩略图不带）
-      if (c.id) g.appendChild(el('rect', {
+      if (c.id) sGroup.appendChild(el('rect', {
         x: -34, y: -42, width: 68, height: 36,
         class: 'wiper-hit', 'data-comp': c.id, fill: 'transparent'
       }));
@@ -965,7 +1084,7 @@ function drawBody(c, g, scale = 1) {
         const ig = Math.max(1e-12, c.params.Ig);
         const frac = clamp(gr.I / ig, -1, 1);
         const ang = frac * 60 * Math.PI / 180;
-        g.appendChild(el('line', {
+        sGroup.appendChild(el('line', {
           x1: 0, y1: 3, x2: Math.sin(ang) * 11, y2: 3 - Math.cos(ang) * 11,
           stroke: '#dc2626', 'stroke-width': 1.8, 'stroke-linecap': 'round'
         }));
@@ -979,7 +1098,7 @@ function drawBody(c, g, scale = 1) {
       if (c.type === 'led') {
         const lr = state.result && state.result.compCurrent[c.id];
         if (lr && lr.diode && lr.diode.on && lr.I > 0.002) {
-          g.appendChild(el('circle', { cx: 0, cy: 0, r: 26, fill: 'url(#bulbGlow)', class: 'bulb-glow',
+          sGroup.appendChild(el('circle', { cx: 0, cy: 0, r: 26, fill: 'url(#bulbGlow)', class: 'bulb-glow',
             opacity: Math.min(1, lr.I / 0.02) }));
         }
       }
@@ -1036,7 +1155,7 @@ function drawBody(c, g, scale = 1) {
       add('line', { x1: 22, y1: 0, x2: PIN_X, y2: 0 });
       add('line', { x1: -26, y1: 20, x2: 26, y2: -20, 'stroke-width': 1.3 });
       txt('θ', 27, -18, 10, '#1b2536');
-      g.appendChild(el('rect', { x: -14, y: -4, width: 28, height: 11, fill: '#fff', stroke: 'none' }));
+      tGroup.appendChild(el('rect', { x: -14, y: -4, width: 28, height: 11, fill: '#fff', stroke: 'none' }));
       const tR = dynR(c);
       if (tR) txt(`${fmt(tR)} Ω`, 0, 4, 9.5, '#1b2536', 'middle', '600');
       break;
@@ -1069,10 +1188,21 @@ function drawBody(c, g, scale = 1) {
   }
 }
 
+// 元件旋转（v1.8）：rot ∈ 0/90/180/270（顺时针）；引脚与包围盒随旋转
+function rotOff(rot, x, y) {
+  switch (((rot % 360) + 360) % 360) {
+    case 90: return { x: -y, y: x };
+    case 180: return { x: -x, y: -y };
+    case 270: return { x: y, y: -x };
+    default: return { x, y };
+  }
+}
 function pinPos(c, pin) {
   const d = DEFS[c.type];
   const p = d.pins.find(x => x.id === pin);
-  return { x: c.x + p.x, y: c.y + p.y };
+  if (!p) return { x: c.x, y: c.y };
+  const o = rotOff(c.rot || 0, p.x, p.y);
+  return { x: c.x + o.x, y: c.y + o.y };
 }
 
 /* ============================================================
@@ -1115,8 +1245,10 @@ function buildGrid() {
 
 function bboxOf(c, pad = 12) {
   const d = DEFS[c.type];
-  return { x1: c.x - d.w / 2 - pad, y1: c.y - d.h / 2 - pad,
-           x2: c.x + d.w / 2 + pad, y2: c.y + d.h / 2 + pad };
+  const swapped = ((c.rot || 0) % 180 + 180) % 180 === 90;   // 90/270 → 宽高互换
+  const w = swapped ? d.h : d.w, h = swapped ? d.w : d.h;
+  return { x1: c.x - w / 2 - pad, y1: c.y - h / 2 - pad,
+           x2: c.x + w / 2 + pad, y2: c.y + h / 2 + pad };
 }
 
 function segHitsBox(p, q, b) {
@@ -1192,7 +1324,7 @@ function renderAll() {
   state.components.forEach(c => {
     const g = el('g', {
       class: 'comp' + (state.selected === c.id ? ' selected' : ''),
-      transform: `translate(${c.x},${c.y})`,
+      transform: `translate(${c.x},${c.y})${c.rot ? ` rotate(${c.rot})` : ''}`,
       'data-comp': c.id
     });
     const hit = el('rect', {
@@ -1202,6 +1334,13 @@ function renderAll() {
     });
     g.appendChild(hit);
     drawBody(c, g);
+    // 编号标注（v1.8）：水平放在元件上方，不随旋转
+    if (c.id && c.label) {
+      const t = el('text', { x: 0, y: -DEFS[c.type].h / 2 - 8, 'text-anchor': 'middle',
+        'font-size': 10.5, fill: '#6b7a90', 'font-family': 'inherit', 'font-weight': '600' });
+      t.textContent = c.label;
+      g.appendChild(t);
+    }
     DEFS[c.type].pins.forEach(p => {
       const hot = state.wiring &&
         state.wiring.from.c === c.id && state.wiring.from.p === p.id;
@@ -1808,7 +1947,14 @@ function renderPanel() {
 
   const d = DEFS[c.type];
   let html = `<div style="font-size:13px;font-weight:600;margin-bottom:9px">${d.name}
-    <span style="color:#9aa8bd;font-weight:400;font-size:11px">#${c.id.slice(1)}</span></div>`;
+    <span style="color:#9aa8bd;font-weight:400;font-size:11px">${c.label ? c.label + ' · ' : ''}#${c.id.slice(1)}</span></div>`;
+
+  if (c.type !== 'junc') {
+    html += `<div class="prop-row" style="gap:6px">
+      <button class="btn" id="btnRot" style="flex:1" title="快捷键 R">↻ 旋转 90°</button>
+      <button class="btn" id="btnCopy" style="flex:1" title="快捷键 Ctrl+C">复制</button>
+    </div>`;
+  }
 
   if (c.type === 'rheostat') {
     const t = clamp(c.params.pos, 0, 1);
@@ -1948,6 +2094,11 @@ function renderPanel() {
   }
 
   propPanel.innerHTML = html;
+
+  const rotBtn = $('#btnRot');
+  if (rotBtn) rotBtn.onclick = () => { pushHistory(); c.rot = (((c.rot || 0) + 90) % 360); refresh(); toast('已旋转 90°（快捷键 R）'); };
+  const copyBtn = $('#btnCopy');
+  if (copyBtn) copyBtn.onclick = () => copySelected();
 
   if (c.type === 'rheostat') {
     const syncSeg = () => {
@@ -2498,12 +2649,14 @@ window.addEventListener('pointerup', evt => {
   // 放置元件
   if (state.placing) {
     pushHistory();
-    state.components.push({
+    const nc = {
       id: nid(), type: state.placing.type,
       x: state.placing.x, y: state.placing.y,
-      params: { ...DEFS[state.placing.type].params }
-    });
-    state.selected = state.components[state.components.length - 1].id;
+      params: { ...DEFS[state.placing.type].params }, rot: 0
+    };
+    state.components.push(nc);
+    assignLabel(nc);
+    state.selected = nc.id;
     state.placing = null;
     refresh();
     return;
@@ -2550,14 +2703,23 @@ window.addEventListener('keydown', evt => {
   const inField = tag === 'input' || tag === 'textarea' ||
     (evt.target && evt.target.isContentEditable);
 
-  // 撤销 / 重做
+  // 撤销 / 重做 / 复制 / 粘贴
   if ((evt.ctrlKey || evt.metaKey) && !evt.altKey) {
     const k = evt.key.toLowerCase();
     if (k === 'z') { evt.preventDefault(); evt.shiftKey ? doRedo() : doUndo(); return; }
     if (k === 'y') { evt.preventDefault(); doRedo(); return; }
+    if (k === 'c') { if (!inField) { evt.preventDefault(); copySelected(); } return; }
+    if (k === 'v') { if (!inField) { evt.preventDefault(); pasteClip(); } return; }
   }
 
   if (inField) return;
+
+  // 旋转选中的元件（v1.8）
+  if (evt.key === 'r' || evt.key === 'R') {
+    const c = state.components.find(x => x.id === state.selected);
+    if (c) { pushHistory(); c.rot = (((c.rot || 0) + 90) % 360); refresh(); }
+    return;
+  }
 
   if (evt.key === 'Escape') {
     state.wiring = null; state.placing = null; state.drag = null;
@@ -2875,6 +3037,22 @@ function loadPreset(name, record = true) {
     state.selected = rl.id;
   }
 
+  // 测电源电动势和内阻：电池 + 变阻器（A-P 限流接法）+ 理想电流表/电压表
+  // 调滑片改变电流，在「实验数据」面板采多组 U-I，拟合出 E 与 r
+  if (name === 'emfr') {
+    const bat = add('battery', 250, 430, { emf: 3, r: 0.5 });
+    const am = add('idealAmmeter', 430, 430);
+    const rheo = add('rheostat', 630, 430, { R: 20, pos: 0.5 });
+    const vm = add('idealVoltmeter', 250, 250);
+    link(bat, 'pos', am, 'a');
+    link(am, 'b', rheo, 'a');
+    link(rheo, 'p', bat, 'neg', [{ x: 675, y: 394 }, { x: 675, y: 560 }, { x: 295, y: 560 }]);
+    link(bat, 'pos', vm, 'a');
+    link(bat, 'neg', vm, 'b');
+    state.selected = bat.id;
+  }
+
+  ensureLabels();
   refresh();
 }
 
@@ -3753,7 +3931,8 @@ const TEMPLATES = [
   { id: 'capdischarge', name: '电容充放电', desc: 'SPDT 切换充/放电，电流方向反转（暂态）' },
   { id: 'inductor', name: '自感现象', desc: '通电 B 灯先亮 A 灯慢亮；断电续流反向（暂态）' },
   { id: 'acrc', name: '交流 RC', desc: '示波器观察正弦激励与电容电压相位滞后（暂态）' },
-  { id: 'rlc', name: 'RLC 串联谐振', desc: '扫频找谐振峰 f₀=50.3Hz：谐振时灯最亮、电容电压超电源（暂态）' }
+  { id: 'rlc', name: 'RLC 串联谐振', desc: '扫频找谐振峰 f₀=50.3Hz：谐振时灯最亮、电容电压超电源（暂态）' },
+  { id: 'emfr', name: '测电源 E、r', desc: '调变阻器改变电流，实验数据面板采多组 U-I，拟合出电动势 E 与内阻 r' }
 ];
 const TPL_KEY = 'circuit-user-templates-v1';
 function userTplList() {
@@ -3912,15 +4091,175 @@ window.addEventListener('keydown', e => {
 }, true);
 
 /* ============================================================
+   7.95 实验数据（v1.8）：伏安法采点 → U-I 描点 → 最小二乘拟合
+   三种模式：伏安特性曲线（不拟合）/ 测电阻（过原点拟合 R）/ 测电源 E、r（U=E−rI）
+   ============================================================ */
+const EXP_KEY = 'circuit-exp-data-v1';
+let expRows = [];          // { u, i, label, t }
+let expSelRow = -1;
+function expLoad() {
+  try { expRows = JSON.parse(localStorage.getItem(EXP_KEY)) || []; } catch (e) { expRows = []; }
+  if (!Array.isArray(expRows)) expRows = [];
+  expSelRow = -1;
+}
+function expSave() { try { localStorage.setItem(EXP_KEY, JSON.stringify(expRows)); } catch (e) {} }
+function expMode() { return $('#expMode') ? $('#expMode').value : 'bulb'; }
+function expCapture() {
+  const c = state.components.find(x => x.id === state.selected);
+  if (!c || c.type === 'junc') { toast('先在画布上选中要测量的元件（电阻/灯泡）或电源'); return; }
+  const r = state.result && state.result.compCurrent[c.id];
+  if (!r) { toast('还没有解算结果——先接好电路'); return; }
+  const u = Math.abs(r.U), i = Math.abs(r.I);
+  if (u < 1e-9 && i < 1e-9) { toast('读数全为 0——检查电源/开关，交流电路要先开「▶ 暂态仿真」'); return; }
+  expRows.push({ u: +u.toPrecision(6), i: +i.toPrecision(6), label: c.label || DEFS[c.type].name, t: +sim.t.toFixed(3) });
+  expSelRow = expRows.length - 1;
+  expSave(); expRender();
+  toast('已采第 ' + expRows.length + ' 组数据（' + (c.label || DEFS[c.type].name) + '：U=' + u.toFixed(3) + 'V, I=' + i.toFixed(4) + 'A）');
+}
+function expFit() {
+  const mode = expMode(), n = expRows.length;
+  if (n < 2) return null;
+  const sI = expRows.reduce((s, r) => s + r.i, 0);
+  const sU = expRows.reduce((s, r) => s + r.u, 0);
+  const sII = expRows.reduce((s, r) => s + r.i * r.i, 0);
+  const sIU = expRows.reduce((s, r) => s + r.i * r.u, 0);
+  if (mode === 'emf') {
+    const d = n * sII - sI * sI;
+    if (Math.abs(d) < 1e-12) return null;
+    const b = (n * sIU - sI * sU) / d;        // 斜率（放电时为负）
+    const a = (sU - b * sI) / n;              // 纵轴截距 = E
+    return { type: 'emf', E: a, r: -b, b };
+  }
+  if (mode === 'resistor') {
+    if (sII < 1e-12) return null;
+    return { type: 'res', k: sIU / sII };     // 过原点最小二乘：R = ΣUI/ΣI²
+  }
+  return null;
+}
+function expRender() {
+  const tb = $('#expRows');
+  tb.innerHTML = expRows.map((r, k) =>
+    `<tr data-k="${k}" class="${k === expSelRow ? 'sel' : ''}"><td>${k + 1}</td><td>${r.label}</td><td>${r.u.toFixed(3)}</td><td>${r.i.toFixed(4)}</td><td>${r.i > 1e-9 ? (r.u / r.i).toFixed(2) : '—'}</td></tr>`).join('')
+    || '<tr><td colspan="5" class="empty">还没有数据——选中元件后点「采一组数据」</td></tr>';
+  tb.querySelectorAll('tr[data-k]').forEach(tr => {
+    tr.onclick = () => { expSelRow = +tr.dataset.k; expRender(); };
+  });
+  $('#expDelRow').disabled = expSelRow < 0;
+  $('#expClear').disabled = !expRows.length;
+  $('#expCsv').disabled = !expRows.length;
+  const m = expMode();
+  $('#expHint').textContent =
+    m === 'bulb' ? '当前：伏安特性曲线——调节电压/变阻器改变读数，每变一次点「采一组数据」；灯泡图线弯曲 = 灯丝电阻随温度变化。'
+    : m === 'resistor' ? '当前：测电阻——选中定值电阻采 3–5 组点，拟合直线过原点，斜率即电阻 R。'
+    : '当前：测电源电动势和内阻——选中电源，调节变阻器改变电流，采 5 组以上；图线纵轴截距 = E，斜率大小 = r。';
+  expDraw();
+  expShowFit();
+}
+function expShowFit() {
+  const fit = expFit(), box = $('#expFit');
+  if (!fit) { box.textContent = expRows.length < 2 ? '（采 2 组以上数据后自动拟合）' : ''; return; }
+  if (fit.type === 'emf') {
+    box.innerHTML = `最小二乘拟合：U = ${fit.E.toFixed(3)} − ${Math.abs(fit.b).toFixed(3)}·I\n→ 电动势 <b>E ≈ ${fit.E.toFixed(3)} V</b>，内阻 <b>r ≈ ${fit.r.toFixed(3)} Ω</b>`;
+  } else {
+    box.innerHTML = `过原点最小二乘拟合：R = U/I = <b>${fit.k.toFixed(3)} Ω</b>`;
+  }
+}
+function expDraw() {
+  const cv = $('#expCanvas'), ctx = cv.getContext('2d');
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  const W = cv.width, H = cv.height;
+  ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, W, H);
+  const mL = 56, mR = 20, mT = 28, mB = 46;
+  const m = expMode();
+  let iMax = 1e-9, uMax = 1e-9;
+  expRows.forEach(r => { iMax = Math.max(iMax, r.i); uMax = Math.max(uMax, r.u); });
+  const fit0 = expFit();
+  if (fit0 && fit0.type === 'emf') uMax = Math.max(uMax, fit0.E);
+  iMax *= 1.12; uMax *= 1.12;
+  const X = i => mL + i / iMax * (W - mL - mR);
+  const Y = u => H - mB - u / uMax * (H - mT - mB);
+  ctx.strokeStyle = '#334155'; ctx.lineWidth = 1.4;
+  ctx.beginPath(); ctx.moveTo(mL, mT - 6); ctx.lineTo(mL, H - mB); ctx.lineTo(W - mR, H - mB); ctx.stroke();
+  ctx.font = '12px sans-serif';
+  for (let gd = 0; gd <= 5; gd++) {
+    const u = uMax * gd / 5, i = iMax * gd / 5;
+    ctx.strokeStyle = '#e2e8f0'; ctx.beginPath(); ctx.moveTo(mL, Y(u)); ctx.lineTo(W - mR, Y(u)); ctx.stroke();
+    ctx.fillStyle = '#334155'; ctx.textAlign = 'right';
+    ctx.fillText(u.toFixed(uMax < 1 ? 2 : 1), mL - 6, Y(u) + 4);
+    ctx.textAlign = 'center';
+    ctx.fillText(i.toFixed(iMax < 0.1 ? 3 : iMax < 1 ? 2 : 1), X(i), H - mB + 16);
+  }
+  ctx.fillStyle = '#334155'; ctx.textAlign = 'left';
+  ctx.fillText('U/V', mL - 44, mT - 10);
+  ctx.fillText('I/A', W - mR + 4, H - mB + 4);
+  ctx.fillStyle = '#0f172a'; ctx.font = 'bold 13px sans-serif';
+  ctx.fillText(m === 'bulb' ? '伏安特性曲线（U-I）' : m === 'resistor' ? '测电阻：R = U/I' : '测电源电动势和内阻：U = E − rI', mL, 16);
+  const fit = expFit();
+  if (fit) {
+    ctx.strokeStyle = '#dc2626'; ctx.lineWidth = 1.6;
+    ctx.beginPath();
+    if (fit.type === 'emf') {
+      const iEnd = fit.r > 1e-9 ? Math.min(fit.E / fit.r, iMax * 1.05) : iMax;
+      ctx.moveTo(X(0), Y(fit.E));
+      ctx.lineTo(X(iEnd), Y(Math.max(0, fit.E - fit.r * iEnd)));
+    } else {
+      ctx.moveTo(X(0), Y(0));
+      ctx.lineTo(X(iMax), Y(fit.k * iMax));
+    }
+    ctx.stroke();
+  }
+  expRows.forEach((r, k) => {
+    ctx.fillStyle = k === expSelRow ? '#f472b6' : '#2563eb';
+    ctx.beginPath(); ctx.arc(X(r.i), Y(r.u), k === expSelRow ? 5.5 : 4.5, 0, 7); ctx.fill();
+    ctx.strokeStyle = '#fff'; ctx.lineWidth = 1; ctx.stroke();
+  });
+}
+function expCsv() {
+  const m = expMode(), fit = expFit();
+  const head = m === 'emf' ? '序号,元件,路端电压U/V,电流I/A' : '序号,元件,U/V,I/A,R=U/I/Ω';
+  const lines = expRows.map((r, k) => {
+    const rr = r.i > 1e-9 ? (r.u / r.i).toFixed(4) : '';
+    return `${k + 1},${r.label},${r.u},${r.i},${rr}`;
+  });
+  let tail = '';
+  if (fit && fit.type === 'emf') tail = `\n拟合结果,E=${fit.E.toFixed(4)}V,r=${fit.r.toFixed(4)}Ω`;
+  if (fit && fit.type === 'res') tail = `\n拟合结果,R=${fit.k.toFixed(4)}Ω`;
+  const a = document.createElement('a');
+  a.href = 'data:text/csv;charset=utf-8,\uFEFF' + encodeURIComponent(head + '\n' + lines.join('\n') + tail);
+  a.download = '实验数据.csv';
+  a.click();
+  toast('已导出 CSV（含拟合结果）');
+}
+function initExp() {
+  expLoad();
+  $('#btnExp').onclick = () => { $('#expModal').classList.add('open'); expRender(); };
+  $('#expClose').onclick = () => $('#expModal').classList.remove('open');
+  $('#expMode').onchange = expRender;
+  $('#expCap').onclick = expCapture;
+  $('#expDelRow').onclick = () => { if (expSelRow >= 0) { expRows.splice(expSelRow, 1); expSelRow = -1; expSave(); expRender(); } };
+  $('#expClear').onclick = () => { expRows = []; expSelRow = -1; expSave(); expRender(); };
+  $('#expCsv').onclick = expCsv;
+}
+
+/* ============================================================
    8. 启动
    ============================================================ */
 buildGrid();
 initTools();
+initExp();
 loadPreset('series', false);
 $('#btnGuide').onclick = () => guideStart(0);
-window.__demo = { loadPreset, state, solve, refresh, doUndo, doRedo, history, sim, simStep, simReset, runSweep, rlcParams, sweepParams, guideStart, guideStop };
-// 首次打开：自动弹出操作引导
+function setProjector(on) {
+  document.body.classList.toggle('projector', !!on);
+  $('#btnProjector').style.cssText = on ? 'border-color:var(--accent);color:var(--accent);font-weight:600;' : '';
+  try { localStorage.setItem('circuit-projector-v1', on ? '1' : '0'); } catch (e) {}
+}
+$('#btnProjector').onclick = () => setProjector(!document.body.classList.contains('projector'));
+window.__demo = { loadPreset, state, solve, refresh, doUndo, doRedo, history, sim, simStep, simReset, runSweep, rlcParams, sweepParams, guideStart, guideStop,
+  expCapture, expFit, expRowsGet: () => expRows, expClearAll: () => { expRows = []; expSave(); expRender(); }, setProjector };
+// 首次打开：自动弹出操作引导；投影模式记忆
 try { if (!localStorage.getItem(GUIDE_KEY)) setTimeout(() => { guideStart(0); }, 600); } catch (e) {}
+try { setProjector(localStorage.getItem('circuit-projector-v1') === '1'); } catch (e) {}
 requestAnimationFrame(function loop() {
   renderDots();
   requestAnimationFrame(loop);
