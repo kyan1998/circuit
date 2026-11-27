@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>电路可视化 · v1.5 演示</title>
+<title>电路可视化 · v1.6 演示</title>
 <style>
   :root{
     --bg:#eef1f6; --panel:#ffffff; --line:#dde4ee; --text:#1b2536; --muted:#6b7a90;
@@ -201,7 +201,7 @@
 <body>
 <div class="app">
   <header class="topbar">
-    <div class="brand"><h1>电路可视化</h1><span>v1.5</span></div>
+    <div class="brand"><h1>电路可视化</h1><span>v1.6</span></div>
     <div class="spacer"></div>
     <div class="btn-group">
     <div class="sep"></div>
@@ -289,13 +289,17 @@
               </div>
               <button class="btn" id="calRand">放入随机物体</button>
               <button class="btn" id="calTake">取出物体</button>
+              <span style="font-size:12px;color:#6b7a90">视图：</span>
+              <button class="btn" id="calZoomIn" title="放大视图（滚轮也可以）">放大</button>
+              <button class="btn" id="calZoomOut" title="缩小视图">缩小</button>
+              <button class="btn" id="calZoomReset" title="恢复 1:1">1:1</button>
               <input id="calRead" placeholder="读数（mm）" disabled>
               <button class="btn" id="calCheck" disabled>检查</button>
               <button class="btn" id="calShow" disabled>显示正确读数</button>
               <span class="tool-fb" id="calFb"></span>
               <span class="tool-live" id="calLive"></span>
             </div>
-            <div class="tool-note">真实卡尺由主尺、游标尺、外测量爪（测厚度/外径）、内测量爪（测内径/槽宽）、深度尺（测深度）和紧固螺钉组成。拖动右侧游标框可自由开合，观察哪条游标刻度线与主尺对齐；<b>游标卡尺读数不需要估读位</b>。读数 = 主尺整毫米 + 对齐格数 × 分度值。</div>
+            <div class="tool-note">真实卡尺由主尺、游标尺、外测量爪（测厚度/外径）、内测量爪（测内径/槽宽）、深度尺（测深度）和紧固螺钉组成。拖动右侧游标框可自由开合，观察哪条游标刻度线与主尺对齐；<b>游标卡尺读数不需要估读位</b>。读数 = 主尺整毫米 + 对齐格数 × 分度值。视图放大后自动跟随读数区。</div>
           </div>
           <div id="micWrap" style="display:none">
             <svg id="micSvg" viewBox="0 0 780 210" style="width:100%"></svg>
@@ -303,6 +307,10 @@
               <button class="btn" id="micRand">放入随机物体</button>
               <button class="btn" id="micTake">取出物体</button>
               <button class="btn" id="micRezero">随机零误差</button>
+              <span style="font-size:12px;color:#6b7a90">视图：</span>
+              <button class="btn" id="micZoomIn" title="放大视图（滚轮也可以）">放大</button>
+              <button class="btn" id="micZoomOut" title="缩小视图">缩小</button>
+              <button class="btn" id="micZoomReset" title="恢复 1:1">1:1</button>
               <span class="tool-live" id="micZeroLive"></span>
             </div>
             <div class="tool-ui">
@@ -312,7 +320,7 @@
               <span class="tool-fb" id="micFb"></span>
               <span class="tool-live" id="micLive"></span>
             </div>
-            <div class="tool-note">拖动右侧测微套筒可自由旋进旋出。真实千分尺存在<b>零误差</b>：先测砧并拢记下初读数，测量值 = 末读数 − 初读数。读数 = 固定刻度（含半毫米）+ 可动刻度 × 0.01 mm，<b>需估读一位</b>（到 0.001 mm），答案误差 ≤ 0.002 mm 判对。</div>
+            <div class="tool-note">拖动右侧测微套筒可自由旋进旋出。真实千分尺存在<b>零误差</b>：先测砧并拢记下初读数，测量值 = 末读数 − 初读数。读数 = 固定刻度（含半毫米）+ 可动刻度 × 0.01 mm，<b>需估读一位</b>（到 0.001 mm），答案误差 ≤ 0.002 mm 判对。视图放大后自动跟随读数区。</div>
           </div>
           <div id="mmWrap" style="display:none">
             <svg id="mmSvg" viewBox="0 0 700 290" style="width:100%"></svg>
@@ -2870,8 +2878,8 @@ function toast(msg) {
    ============================================================ */
 const tools = {
   tab: 'caliper',
-  cal: { n: 10, W: null, gap: 18 },   // n 分度数；W 物体宽度(null=自由模式)；gap 开口
-  mic: { W: null, L: 6.5, zero: 0 },            // L 测砧间距；zero 零误差（v1.5）
+  cal: { n: 10, W: null, gap: 18, zoom: 1 },   // n 分度数；W 物体宽度(null=自由模式)；gap 开口；zoom 视图倍率（v1.6）
+  mic: { W: null, L: 6.5, zero: 0, zoom: 1 },            // L 测砧间距；zero 零误差；zoom 视图倍率（v1.6）
   mm: { mode: 'V', range: 2.5, iRange: 25, rMult: 1, Rmid: 15, target: null, zeroing: false },   // 多用电表（v1.5 旋钮选档）
   conv: { Ig: 300, Rg: 100, kind: 'V', range: 3, test: 1.5 }                          // 改装电表
 };
@@ -2889,6 +2897,16 @@ function calCorrect(W, n) {
   const M = Math.floor(W + 1e-9);
   const k = Math.round((W - M) * n) % n;
   return { M, k, val: M + k / n };
+}
+
+// 视图缩放（v1.6）：把 viewBox 缩到焦点附近，焦点自动跟随读数区
+function applyViewZoom(svgId, zoom, fx, fy, W, H) {
+  const svg = $(svgId);
+  const z = Math.max(1, Math.min(6, zoom || 1));
+  const vw = W / z, vh = H / z;
+  const vx = Math.max(0, Math.min(W - vw, fx - vw / 2));
+  const vy = Math.max(0, Math.min(H - vh, fy - vh / 2));
+  svg.setAttribute('viewBox', `${vx.toFixed(1)} ${vy.toFixed(1)} ${vw.toFixed(1)} ${vh.toFixed(1)}`);
 }
 
 function drawCaliper() {
@@ -2940,7 +2958,9 @@ function drawCaliper() {
   const M = Math.floor(gap);
   svg.appendChild(tEl('line', { x1: x0 + (M + k) * s, y1: 88, x2: x0 + (M + k) * s, y2: 130, stroke: '#dc2626', 'stroke-width': 1.2, opacity: 0.75 }));
   const live = $('#calLive');
-  if (live) live.textContent = st.W != null ? '测物体中…' : '当前开口：' + gap.toFixed(n === 10 ? 1 : 2) + ' mm（拖动游标可自由开合）';
+  if (live) live.textContent = st.W != null ? '测物体中…' : '当前开口：' + gap.toFixed(n === 10 ? 1 : 2) + ' mm（拖动游标可自由开合）'
+    + (st.zoom > 1 ? '｜视图 ×' + st.zoom.toFixed(1) : '');
+  applyViewZoom('#calSvg', st.zoom, xJaw + vLen / 2, 105, 720, 210);
 }
 
 function micMainOf(L) { return Math.floor(L * 2 + 1e-9) / 2; }
@@ -2986,6 +3006,7 @@ function drawMicrometer() {
     : `测砧并拢时的初读数（零误差）：${zero >= 0 ? '+' : ''}${zero.toFixed(3)} mm｜当前开口 ${L.toFixed(3)} mm`;
   const zl = $('#micZeroLive');
   if (zl) zl.textContent = `当前初读数（零误差）：${zero >= 0 ? '+' : ''}${zero.toFixed(3)} mm${zero === 0 ? '（无）' : ''}`;
+  applyViewZoom('#micSvg', st.zoom, xEdge + 45, 125, 780, 210);
 }
 
 function drawTools() { drawCaliper(); drawMicrometer(); }
@@ -3045,6 +3066,21 @@ function initTools() {
     drawMicrometer();
     $('#micFb').textContent = '';
   };
+  // 视图缩放（v1.6）：按钮 + 滚轮，焦点自动跟随读数区
+  const zoomBind = (inId, outId, resetId, key, draw) => {
+    $(inId).onclick = () => { tools[key].zoom = Math.min(6, (tools[key].zoom || 1) * 1.6); draw(); };
+    $(outId).onclick = () => { tools[key].zoom = Math.max(1, (tools[key].zoom || 1) / 1.6); draw(); };
+    $(resetId).onclick = () => { tools[key].zoom = 1; draw(); };
+  };
+  zoomBind('#calZoomIn', '#calZoomOut', '#calZoomReset', 'cal', drawCaliper);
+  zoomBind('#micZoomIn', '#micZoomOut', '#micZoomReset', 'mic', drawMicrometer);
+  [['#calSvg', 'cal', drawCaliper], ['#micSvg', 'mic', drawMicrometer]].forEach(([id, key, draw]) => {
+    $(id).addEventListener('wheel', e => {
+      e.preventDefault();
+      tools[key].zoom = Math.max(1, Math.min(6, (tools[key].zoom || 1) * (e.deltaY < 0 ? 1.15 : 1 / 1.15)));
+      draw();
+    }, { passive: false });
+  });
   $('#micRand').onclick = () => {
     tools.mic.W = Math.floor(2000 + Math.random() * 13000) / 1000;
     drawMicrometer();
@@ -3323,7 +3359,7 @@ function drawConvert() {
     // 端钮+ → 节点 →（上 G / 下 R并）→ 节点 → 端钮−
     terminal(92, 115, '+'); wire(100, 115, 160, 115); dot(160, 115);
     wire(160, 115, 160, 70); wire(160, 70, 276, 70); gCircle(300, 70); wire(324, 70, 360, 70); wire(360, 70, 360, 115); dot(360, 115);
-    wire(160, 115, 160, 160); wire(160, 160, 210, 160); rBox(260, 160, 'R并'); wire(310, 160, 360, 160);
+    wire(160, 115, 160, 160); wire(160, 160, 210, 160); rBox(260, 160, 'R并'); wire(310, 160, 360, 160); wire(360, 160, 360, 115);   // 右端向上接回节点（v1.6 修复悬空）
     wire(360, 115, 392, 115); terminal(400, 115, '−');
     tText(svg, '改装后电流表：G 与分流电阻并联（接入电路时串进被测支路）', { x: 260, y: 226, 'text-anchor': 'middle', 'font-size': 11.5, fill: '#6b7a90' });
   }
