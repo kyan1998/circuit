@@ -8,7 +8,7 @@ const ROOT = path.resolve(__dirname, '..');
 const DIST = path.join(__dirname, 'node_modules', 'electron', 'dist');
 const OUT = path.join(ROOT, 'CircuitLab-win64');
 const APP = path.join(OUT, 'resources', 'app');
-const HTML_FILE = '电路可视化-演示-v1.8.html';   // 升级版本时改这里
+const HTML_FILE = '电路可视化-演示-v1.9.html';   // 升级版本时改这里
 
 if (!fs.existsSync(DIST)) {
   console.error('未找到 electron 运行时，请先在 desktop/ 下执行: npm install');
