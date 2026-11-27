@@ -5,7 +5,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="author" content="kk">
-<title>电路可视化 · v1.11 演示 · 作者 kk</title>
+<title>电路可视化 · v1.12 演示 · 作者 kk</title>
 <style>
   :root{
     --bg:#eef1f6; --panel:#ffffff; --line:#dde4ee; --text:#1b2536; --muted:#6b7a90;
@@ -245,7 +245,7 @@
 <body>
 <div class="app">
   <header class="topbar">
-    <div class="brand"><h1>电路可视化</h1><span>v1.11 · by kk</span></div>
+    <div class="brand"><h1>电路可视化</h1><span>v1.12 · by kk</span></div>
     <div class="spacer"></div>
     <div class="btn-group">
     <div class="sep"></div>
@@ -1251,6 +1251,29 @@ function drawBody(c, g, scale = 1) {
   }
 }
 
+// 对齐参考虚线的数据（v1.12）：中心或任一引脚与其他元件中心/引脚同 x / 同 y
+function computeAlignGuides(c) {
+  const guides = [];
+  const seen = new Set();
+  const push = (axis, pos, other) => {
+    const k = axis + ':' + Math.round(pos) + ':' + other;
+    if (!seen.has(k)) { seen.add(k); guides.push({ axis, pos, other }); }
+  };
+  state.components.filter(o => o.id !== c.id).forEach(o => {
+    if (Math.abs(c.x - o.x) < 0.5) push('x', c.x, o.id);   // 中心对中心
+    if (Math.abs(c.y - o.y) < 0.5) push('y', c.y, o.id);
+    DEFS[c.type].pins.forEach(p1 => {
+      const o1 = rotOff(c.rot || 0, p1.x, p1.y);
+      DEFS[o.type].pins.forEach(p2 => {
+        const o2 = rotOff(o.rot || 0, p2.x, p2.y);
+        if (Math.abs((c.x + o1.x) - (o.x + o2.x)) < 0.5) push('x', c.x + o1.x, o.id);   // 引脚对引脚
+        if (Math.abs((c.y + o1.y) - (o.y + o2.y)) < 0.5) push('y', c.y + o1.y, o.id);
+      });
+    });
+  });
+  return guides;
+}
+
 // 元件旋转（v1.8）：rot ∈ 0/90/180/270（顺时针）；引脚与包围盒随旋转
 function rotOff(rot, x, y) {
   switch (((rot % 360) + 360) % 360) {
@@ -1462,8 +1485,27 @@ function renderAll() {
     layerComps.appendChild(g);
   }
 
-  // ---- 临时拉线 ----
+  // ---- 对齐参考虚线（v1.12）：拖动中与其他元件 x/y 对齐时显示 ----
   layerUI.innerHTML = '';
+  if (state.drag && state.alignGuides && state.alignGuides.length) {
+    const dc = state.components.find(x => x.id === state.drag.id);
+    if (dc) {
+      const b1 = bboxOf(dc);
+      state.alignGuides.forEach(gd => {
+        const o = state.components.find(x => x.id === gd.other);
+        if (!o) return;
+        const b2 = bboxOf(o);
+        const style = { stroke: '#f472b6', 'stroke-width': 1.2, 'stroke-dasharray': '5 4', opacity: 0.9 };
+        if (gd.axis === 'x') {
+          layerUI.appendChild(el('line', { x1: gd.pos, y1: Math.min(b1.y1, b2.y1) - 10,
+            x2: gd.pos, y2: Math.max(b1.y2, b2.y2) + 10, ...style }));
+        } else {
+          layerUI.appendChild(el('line', { x1: Math.min(b1.x1, b2.x1) - 10, y1: gd.pos,
+            x2: Math.max(b1.x2, b2.x2) + 10, y2: gd.pos, ...style }));
+        }
+      });
+    }
+  }
   if (state.wiring && state.wiring.mouse) {
     const A = pinOf(state.wiring.from);
     if (A) {
@@ -2672,10 +2714,9 @@ window.addEventListener('pointermove', evt => {
       state.drag.moved = true;
       pushHistory();   // 快照的是移动前的位置
     }
-    // 2px 细网格吸附（v1.11）：10px 网格对不齐 ±14px 之类的引脚偏移，细网格 + 引脚磁性对齐才能拉直连线
+    // 2px 细网格吸附 + 引脚磁性对齐（v1.11）：靠近其他元件引脚 ≤3px 自动吸齐（x/y 独立取最近）
     c.x = Math.round((p.x - state.drag.ox) / 2) * 2;
     c.y = Math.round((p.y - state.drag.oy) / 2) * 2;
-    // 引脚磁性对齐：被拖元件任一引脚与其他元件引脚相差 ≤3px 时自动吸齐（x/y 独立取最近）
     const others = state.components.filter(x => x.id !== c.id);
     let magX = null, magY = null;
     DEFS[c.type].pins.forEach(p1 => {
@@ -2690,6 +2731,8 @@ window.addEventListener('pointermove', evt => {
     });
     if (magX !== null) c.x += magX;
     if (magY !== null) c.y += magY;
+    // 对齐参考虚线（v1.12）：中心或引脚与其他元件 x/y 对齐时提示
+    state.alignGuides = computeAlignGuides(c);
     solve(); renderAll(); renderTable(); renderDiag();
     return;
   }
@@ -2756,6 +2799,7 @@ window.addEventListener('pointerup', evt => {
   if (state.drag || state.wiperDrag || state.panDrag) {
     const d = state.drag;
     state.drag = null;
+    state.alignGuides = null;   // 松手后移除对齐虚线
     state.wiperDrag = null;
     state.panDrag = null;
     canvas.classList.remove('grab');
