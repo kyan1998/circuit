@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>电路可视化 · v1.6 演示</title>
+<title>电路可视化 · v1.7 演示</title>
 <style>
   :root{
     --bg:#eef1f6; --panel:#ffffff; --line:#dde4ee; --text:#1b2536; --muted:#6b7a90;
@@ -196,12 +196,26 @@
    .seg .btn.active{background:var(--accent);color:#fff;border-color:var(--accent);}
    .tool-drag{cursor:ew-resize;}
    .tool-note{font-size:12px;color:#9aa8bd;margin-top:6px;line-height:1.8;}
+
+   /* 新手引导（v1.7） */
+   .guide-spot{position:fixed;z-index:100;border:2px solid var(--accent);border-radius:12px;
+     box-shadow:0 0 0 9999px rgba(15,23,42,.55);pointer-events:none;transition:all .25s;}
+   .guide-dim{background:rgba(15,23,42,.35);border:none;box-shadow:none;}
+   .guide-card{position:fixed;z-index:101;left:50%;transform:translateX(-50%);
+     bottom:44px;background:#fff;border-radius:14px;box-shadow:0 20px 60px rgba(0,0,0,.3);
+     padding:16px 20px;max-width:540px;width:min(540px,92vw);}
+   .guide-card h3{margin:0 0 8px;font-size:15px;color:#1b2536;}
+   .guide-card p{margin:0 0 12px;font-size:13px;line-height:1.9;color:#475569;}
+   .guide-foot{display:flex;align-items:center;gap:8px;}
+   .guide-dots{display:flex;gap:5px;margin-right:auto;}
+   .guide-dots i{width:7px;height:7px;border-radius:50%;background:#cbd5e1;display:block;}
+   .guide-dots i.on{background:var(--accent);}
 </style>
 </head>
 <body>
 <div class="app">
   <header class="topbar">
-    <div class="brand"><h1>电路可视化</h1><span>v1.6</span></div>
+    <div class="brand"><h1>电路可视化</h1><span>v1.7</span></div>
     <div class="spacer"></div>
     <div class="btn-group">
     <div class="sep"></div>
@@ -237,6 +251,7 @@
     <button class="btn" id="btnScope">示波器</button>
     <div class="sep"></div>
     <button class="btn" id="btnTemplates">模板库</button>
+    <button class="btn" id="btnGuide" title="第一次使用的操作引导，随时可重看">新手引导</button>
     <input type="file" id="fileInput" accept=".json,application/json" hidden>
   </header>
 
@@ -3833,12 +3848,79 @@ $('#tplSave').onclick = () => {
 };
 
 /* ============================================================
+   7.9 新手引导（v1.7）：首次打开自动弹出，分步高亮讲解；顶栏「新手引导」可重看
+   ============================================================ */
+const GUIDE_KEY = 'circuit-onboarded-v1';
+const GUIDE_STEPS = [
+  { target: null, title: '欢迎使用电路可视化实验室',
+    body: '这是一个高中物理电学交互实验室：<b>拖元件、连线，实时看电流动画与读数</b>，支持暂态仿真、示波器与扫频分析。下面用 6 步带你上手（随时按 <b>Esc</b> 退出）。' },
+  { target: '.palette', title: '① 左侧：元件库（8 类分组）',
+    body: '元件按分类排列：电源、电阻与变阻、开关、电表、负载与控制、半导体、储能、连接。<b>把元件拖到画布上</b>即可放置。' },
+  { target: '.stage', title: '② 中间：画布与连线',
+    body: '点一下元件的<b>引脚</b>再点另一个元件的引脚即可连线；<b>单击开关</b>直接通断；拖动元件可移动；<b>滚轮</b>缩放、<b>空白处拖动</b>平移；点导线选中后按 <b>Delete</b> 删除；<b>Ctrl+Z</b> 撤销。' },
+  { target: '.side', title: '③ 右侧：参数、读数与诊断',
+    body: '点选元件后在右侧<b>修改参数</b>（阻值、电动势、频率、温度…）；下方是<b>读数表</b>与<b>诊断</b>——短路、断路、灯泡超功率、电流计超满偏都会自动提示。' },
+  { target: '.topbar', title: '④ 顶部：模板库、测量工具与仿真',
+    body: '<b>模板库</b>里有 12 个现成电路（不好用的可在管理模式删除）；<b>测量工具</b>含卡尺、千分尺（支持零误差）、多用电表（旋钮选档）与改装电表；点 <b>▶ 暂态仿真</b>进入时间轴模式，配合<b>示波器</b>看波形、做<b>扫频分析</b>。' },
+  { target: null, title: '⑤ 准备好了！',
+    body: '建议先点「模板库」载入「串联电路」试一试；电路会自动暂存在浏览器里，重要作品用<b>保存</b>导出 JSON 备份。本引导可随时点顶栏「新手引导」重看。<br><br>祝上课顺利！' }
+];
+let guideIdx = -1;
+function guideStart(i = 0) { guideIdx = Math.max(0, Math.min(i, GUIDE_STEPS.length - 1)); guideRender(); }
+function guideStop() {
+  guideIdx = -1;
+  try { localStorage.setItem(GUIDE_KEY, '1'); } catch (e) {}
+  document.querySelectorAll('.guide-spot, .guide-card').forEach(e => e.remove());
+}
+function guideRender() {
+  document.querySelectorAll('.guide-spot, .guide-card').forEach(e => e.remove());
+  const st = GUIDE_STEPS[guideIdx];
+  const spot = document.createElement('div');
+  spot.className = 'guide-spot' + (st.target ? '' : ' guide-dim');
+  document.body.appendChild(spot);
+  if (st.target) {
+    const el = document.querySelector(st.target);
+    if (el) {
+      const r = el.getBoundingClientRect();
+      spot.style.left = (r.left - 6) + 'px'; spot.style.top = (r.top - 6) + 'px';
+      spot.style.width = (r.width + 12) + 'px'; spot.style.height = (r.height + 12) + 'px';
+    } else spot.classList.add('guide-dim');
+  } else {
+    spot.style.left = '0'; spot.style.top = '0'; spot.style.width = '100vw'; spot.style.height = '100vh';
+  }
+  const card = document.createElement('div');
+  card.className = 'guide-card';
+  card.innerHTML = `<h3>${st.title}</h3><p>${st.body}</p>
+    <div class="guide-foot">
+      <span class="guide-dots">${GUIDE_STEPS.map((_, i) => `<i class="${i === guideIdx ? 'on' : ''}"></i>`).join('')}</span>
+      ${guideIdx > 0 ? '<button class="btn" id="guidePrev">上一步</button>' : ''}
+      <button class="btn" id="guideSkip">跳过引导</button>
+      <button class="btn" id="guideNext">${guideIdx === GUIDE_STEPS.length - 1 ? '开始使用 ✓' : '下一步 →'}</button>
+    </div>`;
+  document.body.appendChild(card);
+  $('#guideSkip').onclick = guideStop;
+  const prev = $('#guidePrev');
+  if (prev) prev.onclick = () => { guideIdx--; guideRender(); };
+  $('#guideNext').onclick = () => { if (guideIdx === GUIDE_STEPS.length - 1) guideStop(); else { guideIdx++; guideRender(); } };
+}
+window.addEventListener('resize', () => { if (guideIdx >= 0) guideRender(); });
+window.addEventListener('keydown', e => {
+  if (guideIdx < 0) return;
+  if (e.key === 'Escape') { e.stopPropagation(); guideStop(); }
+  else if (e.key === 'ArrowRight' || e.key === 'Enter') { e.stopPropagation(); guideIdx < GUIDE_STEPS.length - 1 ? (guideIdx++, guideRender()) : guideStop(); }
+  else if (e.key === 'ArrowLeft' && guideIdx > 0) { e.stopPropagation(); guideIdx--; guideRender(); }
+}, true);
+
+/* ============================================================
    8. 启动
    ============================================================ */
 buildGrid();
 initTools();
 loadPreset('series', false);
-window.__demo = { loadPreset, state, solve, refresh, doUndo, doRedo, history, sim, simStep, simReset, runSweep, rlcParams, sweepParams };
+$('#btnGuide').onclick = () => guideStart(0);
+window.__demo = { loadPreset, state, solve, refresh, doUndo, doRedo, history, sim, simStep, simReset, runSweep, rlcParams, sweepParams, guideStart, guideStop };
+// 首次打开：自动弹出操作引导
+try { if (!localStorage.getItem(GUIDE_KEY)) setTimeout(() => { guideStart(0); }, 600); } catch (e) {}
 requestAnimationFrame(function loop() {
   renderDots();
   requestAnimationFrame(loop);
