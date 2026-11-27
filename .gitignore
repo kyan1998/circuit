@@ -1,6 +1,13 @@
 # 工作区临时文件
 .zwork/
 *.zwork/
+.tmp_check.js
+高中物理.tmp_check.js
+
+# 桌面版构建产物（体积大，不入库；HTML 与打包脚本入库）
+node_modules/
+桌面版-win64/
+电路可视化-win64.zip
 
 # 系统文件
 Thumbs.db
