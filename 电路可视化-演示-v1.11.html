@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>电路可视化 · v1.10 演示</title>
+<title>电路可视化 · v1.11 演示</title>
 <style>
   :root{
     --bg:#eef1f6; --panel:#ffffff; --line:#dde4ee; --text:#1b2536; --muted:#6b7a90;
@@ -243,7 +243,7 @@
 <body>
 <div class="app">
   <header class="topbar">
-    <div class="brand"><h1>电路可视化</h1><span>v1.10</span></div>
+    <div class="brand"><h1>电路可视化</h1><span>v1.11</span></div>
     <div class="spacer"></div>
     <div class="btn-group">
     <div class="sep"></div>
@@ -2670,8 +2670,24 @@ window.addEventListener('pointermove', evt => {
       state.drag.moved = true;
       pushHistory();   // 快照的是移动前的位置
     }
-    c.x = Math.round((p.x - state.drag.ox) / 10) * 10;
-    c.y = Math.round((p.y - state.drag.oy) / 10) * 10;
+    // 2px 细网格吸附（v1.11）：10px 网格对不齐 ±14px 之类的引脚偏移，细网格 + 引脚磁性对齐才能拉直连线
+    c.x = Math.round((p.x - state.drag.ox) / 2) * 2;
+    c.y = Math.round((p.y - state.drag.oy) / 2) * 2;
+    // 引脚磁性对齐：被拖元件任一引脚与其他元件引脚相差 ≤3px 时自动吸齐（x/y 独立取最近）
+    const others = state.components.filter(x => x.id !== c.id);
+    let magX = null, magY = null;
+    DEFS[c.type].pins.forEach(p1 => {
+      const o1 = rotOff(c.rot || 0, p1.x, p1.y);
+      const px = c.x + o1.x, py = c.y + o1.y;
+      others.forEach(o => DEFS[o.type].pins.forEach(p2 => {
+        const o2 = rotOff(o.rot || 0, p2.x, p2.y);
+        const ddx = (o.x + o2.x) - px, ddy = (o.y + o2.y) - py;
+        if (Math.abs(ddx) <= 3 && (magX === null || Math.abs(ddx) < Math.abs(magX))) magX = ddx;
+        if (Math.abs(ddy) <= 3 && (magY === null || Math.abs(ddy) < Math.abs(magY))) magY = ddy;
+      }));
+    });
+    if (magX !== null) c.x += magX;
+    if (magY !== null) c.y += magY;
     solve(); renderAll(); renderTable(); renderDiag();
     return;
   }
