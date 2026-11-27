@@ -5,7 +5,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="author" content="kk">
-<title>电路可视化 · v1.12 演示 · 作者 kk</title>
+<title>电路可视化 · v1.13 演示 · 作者 kk</title>
 <style>
   :root{
     --bg:#eef1f6; --panel:#ffffff; --line:#dde4ee; --text:#1b2536; --muted:#6b7a90;
@@ -245,7 +245,7 @@
 <body>
 <div class="app">
   <header class="topbar">
-    <div class="brand"><h1>电路可视化</h1><span>v1.12 · by kk</span></div>
+    <div class="brand"><h1>电路可视化</h1><span>v1.13 · by kk</span></div>
     <div class="spacer"></div>
     <div class="btn-group">
     <div class="sep"></div>
@@ -461,7 +461,7 @@
             <button class="btn" id="tplRestoreAll" style="display:none">恢复全部内置模板</button>
             <button class="btn" id="tplManage">管理模板</button>
           </div>
-          <h3>内置模板（载入后可随意修改；不好用的可在管理模式删除）</h3>
+          <h3>内置模板（载入后可随意修改；可在管理模式隐藏/恢复）</h3>
           <div class="tpl-grid" id="tplBuiltin"></div>
           <h3>我的模板</h3>
           <div class="tpl-grid" id="tplUser"></div>
@@ -834,8 +834,16 @@ function restoreFrom(s) {
   state.drag = null;
   state.placing = null;
   ensureLabels();
+  bumpSeq();
   sim.rms = {}; sim.sweep = null; sim.view = 'scope';
   refresh();
+}
+
+function bumpSeq() {
+  [...state.components, ...state.wires].forEach(o => {
+    const v = parseInt(String(o.id || '').slice(1), 10);
+    if (Number.isFinite(v) && v > seq) seq = v;
+  });
 }
 
 function doUndo() {
@@ -3002,13 +3010,15 @@ $('#fileInput').addEventListener('change', e => {
   e.target.value = '';
 });
 
-function loadPreset(name, record = true) {
+/* ---- 启动示例（仅开场串联电路，不进模板库） ---- */
+function loadStartupCircuit(record = false) {
   if (record) pushHistory();
   if (sim.playing) simToggle();
   sim.t = 0; sim.samples = [];
   sim.rms = {}; sim.sweep = null; sim.view = 'scope';
   state.components = []; state.wires = [];
   state.selected = null; state.selectedWire = null;
+  seq = 0;
   const add = (type, x, y, params) => {
     const c = { id: nid(), type, x, y, params: { ...DEFS[type].params, ...(params || {}) } };
     state.components.push(c); return c;
@@ -3016,212 +3026,24 @@ function loadPreset(name, record = true) {
   const link = (a, pa, b, pb, via) => state.wires.push({
     id: nid(), a: { c: a.id, p: pa }, b: { c: b.id, p: pb }, mode: 'l', via: via || null
   });
-
-  if (name === 'series') {
-    const bat = add('battery', 400, 580, { emf: 3.0 });
-    const bulb = add('bulb', 400, 180, { R: 6 });
-    const r = add('resistor', 780, 180, { R: 10 });
-    const sw = add('switch', 780, 580);
-    link(bat, 'pos', bulb, 'a');
-    link(bulb, 'b', r, 'a');
-    link(r, 'b', sw, 'b');
-    link(sw, 'a', bat, 'neg');
-    state.selected = bulb.id;
-  } else if (name === 'parallel') {
-    const bat = add('battery', 560, 600, { emf: 3.0 });
-    const r1 = add('resistor', 560, 200, { R: 10 });
-    const r2 = add('resistor', 560, 400, { R: 20 });
-    link(r1, 'a', r2, 'a', [{ x: 430, y: 200 }, { x: 430, y: 400 }]);
-    link(r1, 'b', r2, 'b', [{ x: 690, y: 200 }, { x: 690, y: 400 }]);
-    link(r2, 'a', bat, 'pos');
-    link(r2, 'b', bat, 'neg');
-    state.selected = r1.id;
-  }
-
-  if (name === 'divider') {
-    const bat = add('battery', 250, 550, { emf: 3.0 });
-    const rheo = add('rheostat', 620, 550, { R: 20, pos: 0.5 });
-    const bulb = add('bulb', 620, 300, { R: 6 });
-    link(bat, 'pos', rheo, 'a');
-    link(rheo, 'b', bat, 'neg');
-    link(rheo, 'p', bulb, 'a', [{ x: 620, y: 300 }]);
-    link(bulb, 'b', rheo, 'b');
-    state.selected = rheo.id;
-  }
-
-  if (name === 'selector') {
-    const bat = add('battery', 250, 420, { emf: 1.5 });
-    const sw = add('spdt', 450, 300);
-    const bulbA = add('bulb', 700, 200, { R: 10 });
-    const bulbB = add('bulb', 700, 440, { R: 20 });
-    link(bat, 'pos', sw, 'c', [{ x: 205, y: 300 }]);
-    link(sw, 'a', bulbA, 'a', [{ x: 495, y: 200 }]);
-    link(bulbA, 'b', bat, 'neg', [{ x: 775, y: 200 }, { x: 775, y: 560 }, { x: 295, y: 560 }]);
-    link(sw, 'b', bulbB, 'a', [{ x: 495, y: 440 }]);
-    link(bulbB, 'b', bat, 'neg', [{ x: 745, y: 560 }, { x: 295, y: 560 }]);
-    state.selected = sw.id;
-  }
-
-  if (name === 'motor') {
-    const bat = add('battery', 250, 420, { emf: 3 });
-    const sw = add('switch', 450, 420);
-    const mot = add('motor', 650, 420, { R: 1, back: 2 });
-    link(bat, 'pos', sw, 'a', [{ x: 205, y: 330 }, { x: 405, y: 330 }]);
-    link(sw, 'b', mot, 'a');
-    link(mot, 'b', bat, 'neg', [{ x: 695, y: 530 }, { x: 295, y: 530 }]);
-    state.selected = mot.id;
-  }
-
-  // 惠斯通电桥：三个 10Ω + 一个 20Ω → 电桥不平衡，G 有偏转；把 20Ω 改成 10Ω → 平衡，G 读零
-  // 四个角用导线节点衔接
-  if (name === 'bridge') {
-    const bat = add('battery', 300, 680, { emf: 3 });
-    const sw = add('switch', 430, 680);
-    const tl = add('junc', 450, 300);
-    const tr = add('junc', 750, 300);
-    const bl = add('junc', 450, 600);
-    const br = add('junc', 750, 600);
-    const r1 = add('resbox', 600, 300, { R: 10 });   // 上臂
-    const r2 = add('resbox', 830, 450, { R: 10 });   // 右臂
-    const r3 = add('resbox', 600, 600, { R: 20 });   // 下臂（待调）
-    const r4 = add('resbox', 330, 450, { R: 10 });   // 左臂
-    const gal = add('galvanometer', 600, 450);        // 中间桥
-    link(tl, 'e', r1, 'a');
-    link(r1, 'b', tr, 'w');
-    link(tr, 'e', r2, 'b', [{ x: 875, y: 300 }]);
-    link(r2, 'a', br, 'e', [{ x: 785, y: 600 }]);
-    link(bl, 'e', r3, 'a');
-    link(r3, 'b', br, 'w');
-    link(tl, 's', r4, 'b', [{ x: 450, y: 450 }]);
-    link(r4, 'a', bl, 'n', [{ x: 285, y: 576 }]);
-    link(tr, 's', gal, 'b', [{ x: 750, y: 450 }]);
-    link(gal, 'a', bl, 'e', [{ x: 474, y: 450 }]);
-    link(tl, 'n', bat, 'pos', [{ x: 450, y: 220 }, { x: 180, y: 220 }, { x: 180, y: 680 }]);
-    link(bat, 'neg', sw, 'a');
-    link(sw, 'b', br, 's', [{ x: 750, y: 680 }]);
-    state.selected = gal.id;
-  }
-
-  // 电容并联演示：稳态下灯亮（电流走灯），电容充到灯的电压，Q = CU
-  if (name === 'cap') {
-    const bat = add('battery', 250, 500, { emf: 3 });
-    const sw = add('switch', 450, 500);
-    const n1 = add('junc', 600, 400);
-    const n2 = add('junc', 800, 400);
-    const cap = add('capacitor', 700, 500, { C: 100 });
-    const bulb = add('bulb', 700, 300, { R: 6 });
-    link(sw, 'b', n1, 'w', [{ x: 495, y: 400 }]);
-    link(n1, 'n', bulb, 'a', [{ x: 600, y: 300 }]);
-    link(n1, 'e', cap, 'a', [{ x: 624, y: 500 }]);
-    link(bulb, 'b', n2, 'n', [{ x: 800, y: 300 }]);
-    link(cap, 'b', n2, 'w', [{ x: 745, y: 400 }]);
-    link(n2, 's', bat, 'neg', [{ x: 800, y: 600 }, { x: 295, y: 600 }]);
-    link(bat, 'pos', sw, 'a', [{ x: 205, y: 420 }, { x: 405, y: 420 }]);
-    state.selected = cap.id;
-  }
-
-  // 观察电容器的充放电：SPDT 上掷充电、下掷放电，充放电流方向相反
-  if (name === 'capdischarge') {
-    const bat = add('battery', 250, 600, { emf: 3 });
-    const sw = add('spdt', 480, 600);
-    const rw = add('resistor', 700, 600, { R: 1000 });
-    const cap = add('capacitor', 880, 600, { C: 100 });
-    link(bat, 'pos', sw, 'a', [{ x: 205, y: 578 }]);
-    link(sw, 'c', rw, 'a');
-    link(rw, 'b', cap, 'a');
-    link(cap, 'b', sw, 'b', [{ x: 925, y: 622 }]);
-    link(cap, 'b', bat, 'neg', [{ x: 925, y: 660 }, { x: 295, y: 660 }]);
-    state.selected = cap.id;
-  }
-
-  // 通电/断电自感：闭合开关 B 灯先亮 A 灯慢亮；断开后电感维持电流经 B 反向衰减
-  if (name === 'inductor') {
-    const bat = add('battery', 300, 450, { emf: 3 });
-    const sw = add('switch', 460, 450);
-    const j1 = add('junc', 600, 450);
-    const j2 = add('junc', 900, 450);
-    const ind = add('inductor', 750, 350, { L: 1 });
-    const bulbB = add('bulb', 750, 550, { R: 6 });
-    const bulbA = add('bulb', 1000, 450, { R: 6 });
-    link(bat, 'pos', sw, 'a', [{ x: 255, y: 370 }, { x: 415, y: 370 }]);
-    link(sw, 'b', j1, 'w');
-    link(j1, 'n', ind, 'a', [{ x: 600, y: 350 }]);
-    link(ind, 'b', j2, 'n', [{ x: 795, y: 300 }, { x: 900, y: 300 }]);
-    link(j1, 's', bulbB, 'a', [{ x: 600, y: 550 }]);
-    link(bulbB, 'b', j2, 's', [{ x: 900, y: 550 }]);
-    link(j2, 'e', bulbA, 'a');
-    link(bulbA, 'b', bat, 'neg', [{ x: 1045, y: 560 }, { x: 345, y: 560 }]);
-    state.selected = ind.id;
-  }
-
-  // 交流 RC：示波器观察电源正弦波与电容电压的相位滞后
-  if (name === 'acrc') {
-    const ac = add('acsource', 250, 450, { amp: 3, freq: 2 });
-    const rw = add('resistor', 500, 450, { R: 1000 });
-    const cap = add('capacitor', 700, 450, { C: 100 });
-    link(ac, 'pos', rw, 'a');
-    link(rw, 'b', cap, 'a');
-    link(cap, 'b', ac, 'neg');
-    state.selected = cap.id;
-  }
-
-  // RLC 串联谐振：f₀ = 1/(2π√(LC)) = 50.33 Hz（L=0.1H, C=100μF）
-  // 谐振时灯最亮、电容电压超电源峰值（Q≈4.9 倍过电压）；示波器「扫频分析」可实测幅频曲线
-  if (name === 'rlc') {
-    const ac = add('acsource', 200, 400, { amp: 2, freq: 50.33, r: 0.5 });
-    const am = add('idealAmmeter', 400, 400);
-    const bulb = add('bulb', 580, 400, { R: 6, ratedP: 0.5 });
-    const ind = add('inductor', 760, 400, { L: 0.1 });
-    const cap = add('capacitor', 940, 400, { C: 100 });
-    const vm = add('idealVoltmeter', 940, 620);
-    link(ac, 'pos', am, 'a');
-    link(am, 'b', bulb, 'a');
-    link(bulb, 'b', ind, 'a');
-    link(ind, 'b', cap, 'a');
-    link(cap, 'b', ac, 'neg', [{ x: 1030, y: 400 }, { x: 1030, y: 690 }, { x: 245, y: 690 }]);
-    link(cap, 'a', vm, 'a');
-    link(cap, 'b', vm, 'b');
-    state.selected = ac.id;
-  }
-
-  // 温控报警灯：温度升高 → 热敏电阻阻值下降 → 线圈电流增大 → 继电器吸合 → 报警灯亮
-  // 面板把热敏电阻温度拉到约 90℃ 以上即可看到吸合
-  if (name === 'relay') {
-    const bat2 = add('battery', 900, 180, { emf: 3 });
-    const bulb = add('bulb', 300, 180, { R: 6 });
-    const rl = add('relay', 600, 430, { coilR: 50, Ith: 0.05 });
-    const bat1 = add('battery', 300, 600, { emf: 3 });
-    const sw = add('switch', 450, 600);
-    const th = add('thermistor', 650, 600, { R25: 100, B: 3950, temp: 25 });
-    // 负载回路（上）：电池 → com → no → 灯 → 回电池
-    link(bat2, 'pos', rl, 'com', [{ x: 855, y: 120 }, { x: 740, y: 120 }, { x: 740, y: 408 }, { x: 645, y: 408 }]);
-    link(rl, 'no', bulb, 'a', [{ x: 645, y: 520 }, { x: 400, y: 520 }, { x: 400, y: 180 }]);
-    link(bulb, 'b', bat2, 'neg', [{ x: 345, y: 60 }, { x: 945, y: 60 }]);
-    // 控制回路（下）：电池 → 开关 → 热敏 → 线圈 → 回电池
-    link(bat1, 'pos', sw, 'a', [{ x: 255, y: 540 }, { x: 405, y: 540 }]);
-    link(sw, 'b', th, 'a');
-    link(th, 'b', rl, 'a', [{ x: 695, y: 660 }, { x: 410, y: 660 }, { x: 410, y: 340 }, { x: 555, y: 340 }]);
-    link(rl, 'b', bat1, 'neg', [{ x: 500, y: 452 }, { x: 500, y: 560 }, { x: 345, y: 560 }]);
-    state.selected = rl.id;
-  }
-
-  // 测电源电动势和内阻：电池 + 变阻器（A-P 限流接法）+ 理想电流表/电压表
-  // 调滑片改变电流，在「实验数据」面板采多组 U-I，拟合出 E 与 r
-  if (name === 'emfr') {
-    const bat = add('battery', 250, 430, { emf: 3, r: 0.5 });
-    const am = add('idealAmmeter', 430, 430);
-    const rheo = add('rheostat', 630, 430, { R: 20, pos: 0.5 });
-    const vm = add('idealVoltmeter', 250, 250);
-    link(bat, 'pos', am, 'a');
-    link(am, 'b', rheo, 'a');
-    link(rheo, 'p', bat, 'neg', [{ x: 675, y: 394 }, { x: 675, y: 560 }, { x: 295, y: 560 }]);
-    link(bat, 'pos', vm, 'a');
-    link(bat, 'neg', vm, 'b');
-    state.selected = bat.id;
-  }
-
+  const bat = add('battery', 400, 580, { emf: 3.0 });
+  const bulb = add('bulb', 400, 180, { R: 6 });
+  const r = add('resistor', 780, 180, { R: 10 });
+  const sw = add('switch', 780, 580);
+  link(bat, 'pos', bulb, 'a');
+  link(bulb, 'b', r, 'a');
+  link(r, 'b', sw, 'b');
+  link(sw, 'a', bat, 'neg');
+  state.selected = bulb.id;
   ensureLabels();
   refresh();
+}
+function loadTemplateData(t, record = true) {
+  if (record) pushHistory();
+  if (sim.playing) simToggle();
+  sim.t = 0; sim.samples = [];
+  sim.rms = {}; sim.sweep = null; sim.view = 'scope';
+  restoreFrom(JSON.stringify(t.data));
 }
 
 /* ---- Toast ---- */
@@ -3805,7 +3627,7 @@ function simStep() {
 function scopeList() {
   const list = [];
   state.components.forEach(c => {
-    const nm = DEFS[c.type].name + '#' + c.id.slice(1);
+    const nm = DEFS[c.type].name + '#' + c.id.slice(1) + (c.label ? '（' + c.label + '）' : '');
     const cur = () => (state.result && state.result.compCurrent[c.id]) || null;
     list.push({ label: nm + ' 电流', unit: 'A', get: () => { const r0 = cur(); return r0 ? r0.I : 0; } });
     list.push({ label: nm + ' 电压', unit: 'V', get: () => { const r0 = cur(); return r0 ? r0.U : 0; } });
@@ -3829,6 +3651,47 @@ function rebuildScopeSel() {
   sim.scopeSel = sel.value;
 }
 
+/* ---- 示波器纵轴刻度：左侧刻度栏 + 5 条水平刻度线（±vmax / ±vmax/2 / 0） ---- */
+const SCOPE_PAD = { l: 54, r: 10, t: 26, b: 16 };
+function scopeGeom(W, H) {
+  const x0 = SCOPE_PAD.l, x1 = Math.max(SCOPE_PAD.l + 10, W - SCOPE_PAD.r);
+  const y0 = SCOPE_PAD.t, y1 = Math.max(SCOPE_PAD.t + 10, H - SCOPE_PAD.b);
+  return { x0, x1, y0, y1, w: x1 - x0, h: y1 - y0 };
+}
+function fmtScope(v) {
+  const a = Math.abs(v);
+  if (a < 1e-9) return '0';
+  if (a >= 100) return v.toFixed(0);
+  if (a >= 10) return v.toFixed(1);
+  if (a >= 1) return v.toFixed(2);
+  if (a >= 0.01) return v.toFixed(3);
+  return v.toExponential(1);
+}
+function drawScopeFrame(ctx, W, H, vmax, unit) {
+  const g = scopeGeom(W, H), mid = (g.y0 + g.y1) / 2;
+  ctx.fillStyle = '#0b1220'; ctx.fillRect(0, 0, W, H);
+  ctx.fillStyle = '#0f172a'; ctx.fillRect(0, 0, g.x0 - 1, H);   // 刻度栏底色
+  ctx.strokeStyle = '#1e293b'; ctx.lineWidth = 1;
+  for (let i = 0; i <= 12; i++) {
+    const x = g.x0 + g.w * i / 12;
+    ctx.beginPath(); ctx.moveTo(x, g.y0); ctx.lineTo(x, g.y1); ctx.stroke();
+  }
+  ctx.font = '11px sans-serif'; ctx.fillStyle = '#94a3b8';
+  ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
+  for (let i = 0; i <= 4; i++) {
+    const y = g.y0 + g.h * i / 4;
+    ctx.strokeStyle = i === 2 ? '#0f766e' : (i === 0 || i === 4 ? '#334155' : '#1e293b');
+    ctx.beginPath(); ctx.moveTo(g.x0, y); ctx.lineTo(g.x1, y); ctx.stroke();
+    ctx.fillText(fmtScope(vmax * (1 - i / 2)), g.x0 - 6, y);
+  }
+  if (unit) {
+    ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+    ctx.fillText(unit, 6, 16);
+  }
+  ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+  return g;
+}
+
 function renderScope() {
   const panel = $('#scopePanel');
   if (panel.style.display === 'none') return;
@@ -3841,9 +3704,6 @@ function renderScope() {
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.fillStyle = '#0b1220'; ctx.fillRect(0, 0, W, H);
   if (sim.view === 'sweepChart' && sim.sweep) { renderSweepChart(ctx, W, H); return; }
-  ctx.strokeStyle = '#1e293b'; ctx.lineWidth = 1;
-  for (let gx = 0; gx <= W; gx += W / 12) { ctx.beginPath(); ctx.moveTo(gx, 0); ctx.lineTo(gx, H); ctx.stroke(); }
-  for (let gy = 0; gy <= H; gy += H / 6) { ctx.beginPath(); ctx.moveTo(0, gy); ctx.lineTo(W, gy); ctx.stroke(); }
   const list = scopeList();
   const it = list[+($('#scopeSel').value || 0)];
   if (sim.scopeMode === 'scan') { renderScanView(ctx, W, H, it); return; }
@@ -3851,27 +3711,29 @@ function renderScope() {
   const toRight = sim.scrollDir === 'right';   // v1.5：向右滚动（最新在左，波形向右流动）
   const t0 = sim.t - win;
   const pts = sim.samples.filter(p => p.t >= t0);
+  let vmax = 1e-6;
+  pts.forEach(p => { vmax = Math.max(vmax, Math.abs(p.v)); });
+  vmax = vmax > 1e-6 ? vmax * 1.15 : 1;
+  const g = drawScopeFrame(ctx, W, H, vmax, it ? it.unit : '');
+  const mid = (g.y0 + g.y1) / 2, half = g.h / 2;
   ctx.strokeStyle = '#0f766e';
-  ctx.beginPath(); ctx.moveTo(0, H / 2); ctx.lineTo(W, H / 2); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(g.x0, mid); ctx.lineTo(g.x1, mid); ctx.stroke();
   if (it && pts.length > 1) {
-    let vmax = 1e-6;
-    pts.forEach(p => { vmax = Math.max(vmax, Math.abs(p.v)); });
-    vmax *= 1.15;
     ctx.strokeStyle = '#38bdf8'; ctx.lineWidth = 1.8;
     ctx.beginPath();
     let first = true;
     pts.forEach(p => {
-      const x = toRight ? (sim.t - p.t) / win * W : (p.t - t0) / win * W;
-      const y = H / 2 - (p.v / vmax) * (H / 2 - 12);
+      const x = g.x0 + (toRight ? (sim.t - p.t) / win : (p.t - t0) / win) * g.w;
+      const y = mid - (p.v / vmax) * half;
       if (first) { ctx.moveTo(x, y); first = false; } else ctx.lineTo(x, y);
     });
     ctx.stroke();
     ctx.fillStyle = '#94a3b8'; ctx.font = '12px sans-serif';
     ctx.fillText('±' + vmax.toFixed(2) + ' ' + it.unit + '｜窗口 3 s｜' + it.label
-      + (toRight ? '｜向右滚动：左端=最新' : '｜向左滚动：右端=最新'), 10, 16);
+      + (toRight ? '｜向右滚动：左端=最新' : '｜向左滚动：右端=最新'), g.x0 + 4, 16);
   } else {
     ctx.fillStyle = '#94a3b8'; ctx.font = '12px sans-serif';
-    ctx.fillText(it ? it.label + '（无数据）' : '——', 10, 16);
+    ctx.fillText(it ? it.label + '（无数据）' : '——', g.x0 + 4, 16);
   }
 }
 
@@ -3909,9 +3771,11 @@ function renderScanView(ctx, W, H, it) {
   let vmax = 1e-6;
   curPts.forEach(p => { vmax = Math.max(vmax, Math.abs(p.v)); });
   prevPts.forEach(p => { vmax = Math.max(vmax, Math.abs(p.v)); });
-  vmax *= 1.15;
-  const X = t => (t - pageStart) / T * W;
-  const Y = v => H / 2 - (v / vmax) * (H / 2 - 12);
+  vmax = vmax > 1e-6 ? vmax * 1.15 : 1;
+  const g = drawScopeFrame(ctx, W, H, vmax, it ? it.unit : '');
+  const mid = (g.y0 + g.y1) / 2, half = g.h / 2;
+  const X = t => g.x0 + (t - pageStart) / T * g.w;
+  const Y = v => mid - (v / vmax) * half;
   const drawPts = (arr, color, width) => {
     if (arr.length < 2) return;
     ctx.strokeStyle = color; ctx.lineWidth = width;
@@ -3929,9 +3793,9 @@ function renderScanView(ctx, W, H, it) {
   ctx.fillStyle = '#94a3b8'; ctx.font = '12px sans-serif';
   const tbStr = T < 1 ? (T * 1000).toFixed(0) + ' ms' : T.toFixed(2).replace(/\.?0+$/, '') + ' s';
   const trig = sp.triggered ? `触发：交流源整周期对齐（每屏 ${sp.cycles} 个周期，波形稳定）` : '自由扫描（触发需交流源）';
-  ctx.fillText(`扫描：${it ? it.label : '——'}｜每屏 ${tbStr}｜${trig}｜±${vmax.toFixed(2)} ${it ? it.unit : ''}`, 10, 16);
+  ctx.fillText(`扫描：${it ? it.label : '——'}｜每屏 ${tbStr}｜${trig}｜±${vmax.toFixed(2)} ${it ? it.unit : ''}`, g.x0 + 4, 16);
   if (!curPts.length && !prevPts.length) {
-    ctx.fillText(it ? it.label + '（无数据：点「▶ 暂态仿真」开始记录）' : '——', 10, 34);
+    ctx.fillText(it ? it.label + '（无数据：点「▶ 暂态仿真」开始记录）' : '——', g.x0 + 4, 34);
   }
 }
 
@@ -4088,19 +3952,13 @@ $('#scrollDirSel').onchange = () => { sim.scrollDir = $('#scrollDirSel').value; 
 
 /* ---- 模板库 ---- */
 const TEMPLATES = [
-  { id: 'series', name: '串联电路', desc: '电池+开关+灯泡+电阻，入门基线（0.182 A）' },
-  { id: 'parallel', name: '并联电路', desc: '两支路分流：0.279 A + 0.139 A = 0.418 A' },
-  { id: 'divider', name: '分压电路', desc: '滑动变阻器分压接法，滑片可调' },
-  { id: 'selector', name: '切换电路', desc: '单刀双掷选择支路：10Ω / 20Ω 灯' },
-  { id: 'motor', name: '电动机', desc: '非纯电阻：UI = I²R + EI，含启动/发电工况' },
-  { id: 'bridge', name: '惠斯通电桥', desc: '三个 10Ω + 一个 20Ω，调平衡→灵敏电流计读零' },
-  { id: 'cap', name: '电容并联', desc: '稳态隔直流：电流走灯泡，电容充到灯压' },
-  { id: 'relay', name: '温控报警灯', desc: '热敏+继电器：温度拉到约 92℃ 吸合报警' },
-  { id: 'capdischarge', name: '电容充放电', desc: 'SPDT 切换充/放电，电流方向反转（暂态）' },
-  { id: 'inductor', name: '自感现象', desc: '通电 B 灯先亮 A 灯慢亮；断电续流反向（暂态）' },
-  { id: 'acrc', name: '交流 RC', desc: '示波器观察正弦激励与电容电压相位滞后（暂态）' },
-  { id: 'rlc', name: 'RLC 串联谐振', desc: '扫频找谐振峰 f₀=50.3Hz：谐振时灯最亮、电容电压超电源（暂态）' },
-  { id: 'emfr', name: '测电源 E、r', desc: '调变阻器改变电流，实验数据面板采多组 U-I，拟合出电动势 E 与内阻 r' }
+  {"id":"u1","name":"自感现象","desc":"通电 B 灯先亮 A 灯慢亮；断电续流反向（暂态）","data":{"components":[{"id":"c1","type":"battery","x":310,"y":576,"params":{"emf":3,"r":0.5},"label":"E1"},{"id":"c2","type":"bulb","x":450,"y":262,"params":{"R":1,"ratedU":1.2,"ratedP":0.25},"label":"L1"},{"id":"c4","type":"switch","x":558,"y":580,"params":{"closed":false},"label":"S1"},{"id":"c9","type":"resistor","x":690,"y":580,"params":{"R":10},"rot":0,"label":"R1"},{"id":"c11","type":"inductor","x":458,"y":380,"params":{"L":1},"rot":0,"label":"L2"},{"id":"c12","type":"bulb","x":600,"y":320,"params":{"R":6,"ratedU":1.2,"ratedP":0.25},"rot":0,"label":"L3"},{"id":"c13","type":"juncT","x":350,"y":320,"params":{},"rot":90}],"wires":[{"id":"c8","a":{"c":"c4","p":"a"},"b":{"c":"c1","p":"neg"},"mode":"l","via":null},{"id":"c10","a":{"c":"c4","p":"b"},"b":{"c":"c9","p":"a"},"mode":"l"},{"id":"c14","a":{"c":"c2","p":"b"},"b":{"c":"c12","p":"a"},"mode":"hv"},{"id":"c15","a":{"c":"c11","p":"b"},"b":{"c":"c12","p":"a"},"mode":"hv"},{"id":"c16","a":{"c":"c2","p":"a"},"b":{"c":"c13","p":"w"},"mode":"hv"},{"id":"c17","a":{"c":"c11","p":"a"},"b":{"c":"c13","p":"e"},"mode":"hv"},{"id":"c18","a":{"c":"c13","p":"s"},"b":{"c":"c1","p":"pos"},"mode":"hv"},{"id":"c19","a":{"c":"c12","p":"b"},"b":{"c":"c9","p":"b"},"mode":"hv"}]}},
+  {"id":"u2","name":"测电源电动势和内阻","desc":"变阻器 + 电压/电流表，采点拟合 E 与 r","data":{"components":[{"id":"c75","type":"battery","x":250,"y":540,"params":{"emf":3,"r":0.5},"rot":0,"label":"E1"},{"id":"c76","type":"resistor","x":410,"y":540,"params":{"R":10},"rot":0,"label":"R1"},{"id":"c77","type":"rheostat","x":560,"y":424,"params":{"R":20,"pos":1},"rot":0,"label":"R2"},{"id":"c79","type":"switch","x":560,"y":540,"params":{"closed":true},"rot":0,"label":"S1"},{"id":"c84","type":"ammeter","x":250,"y":388,"params":{"R":0.001},"rot":0,"label":"A1"},{"id":"c85","type":"voltmeter","x":504,"y":300,"params":{"R":10000000},"rot":0,"label":"V1"},{"id":"c90","type":"spdt","x":370,"y":300,"params":{"pos":"a"},"rot":180,"label":"S2"}],"wires":[{"id":"c78","a":{"c":"c75","p":"neg"},"b":{"c":"c76","p":"a"},"mode":"l"},{"id":"c80","a":{"c":"c76","p":"b"},"b":{"c":"c79","p":"a"},"mode":"l"},{"id":"c86","a":{"c":"c75","p":"pos"},"b":{"c":"c84","p":"a"},"mode":"hv"},{"id":"c87","a":{"c":"c84","p":"b"},"b":{"c":"c77","p":"p"},"mode":"l"},{"id":"c88","a":{"c":"c85","p":"b"},"b":{"c":"c77","p":"b"},"mode":"hv"},{"id":"c89","a":{"c":"c77","p":"b"},"b":{"c":"c79","p":"b"},"mode":"hv"},{"id":"c91","a":{"c":"c85","p":"a"},"b":{"c":"c90","p":"c"},"mode":"hv"},{"id":"c92","a":{"c":"c90","p":"a"},"b":{"c":"c84","p":"b"},"mode":"hv"},{"id":"c93","a":{"c":"c90","p":"b"},"b":{"c":"c84","p":"a"},"mode":"hv"}]}},
+  {"id":"u3","name":"电磁振荡","desc":"LC 回路暂态振荡：电容与电感能量往复交换","data":{"components":[{"id":"c59","type":"battery","x":160,"y":300,"params":{"emf":3,"r":0.5},"rot":90,"label":"E1"},{"id":"c60","type":"switch","x":286,"y":156,"params":{"closed":false},"rot":0,"label":"S1"},{"id":"c62","type":"juncL","x":160,"y":156,"params":{},"rot":0},{"id":"c65","type":"juncT","x":388,"y":156,"params":{},"rot":0},{"id":"c67","type":"capacitor","x":388,"y":330,"params":{"C":10000},"rot":90,"label":"C1","_v":640.8975008076258,"_i":24.274540924687663},{"id":"c68","type":"inductor","x":542,"y":334,"params":{"L":10},"rot":90,"label":"L1","_i":-24.27452023197203,"_v":640.8975979785718},{"id":"c71","type":"juncT","x":390,"y":500,"params":{},"rot":180}],"wires":[{"id":"c63","a":{"c":"c62","p":"s"},"b":{"c":"c59","p":"pos"},"mode":"hv"},{"id":"c64","a":{"c":"c62","p":"e"},"b":{"c":"c60","p":"a"},"mode":"hv"},{"id":"c66","a":{"c":"c60","p":"b"},"b":{"c":"c65","p":"w"},"mode":"l"},{"id":"c69","a":{"c":"c65","p":"s"},"b":{"c":"c67","p":"a"},"mode":"hv"},{"id":"c70","a":{"c":"c65","p":"e"},"b":{"c":"c68","p":"a"},"mode":"hv"},{"id":"c72","a":{"c":"c67","p":"b"},"b":{"c":"c71","p":"s"},"mode":"hv"},{"id":"c73","a":{"c":"c68","p":"b"},"b":{"c":"c71","p":"w"},"mode":"vh"},{"id":"c74","a":{"c":"c71","p":"e"},"b":{"c":"c59","p":"neg"},"mode":"hv"}]}},
+  {"id":"u4","name":"分压法测电阻","desc":"分压接法 + 金属丝，伏安法测电阻率","data":{"components":[{"id":"c42","type":"battery","x":310,"y":620,"params":{"emf":3,"r":0.5},"rot":0,"label":"E2"},{"id":"c43","type":"switch","x":520,"y":620,"params":{"closed":true},"rot":0,"label":"S1"},{"id":"c44","type":"rheostat","x":520,"y":470,"params":{"R":20,"pos":0.5},"rot":0,"label":"R1"},{"id":"c45","type":"metalwire","x":520,"y":300,"params":{"mat":"镍铬合金","len":50,"dia":0.4},"rot":0,"label":"W1"},{"id":"c46","type":"ammeter","x":274,"y":300,"params":{"R":0.001},"rot":0,"label":"A1"},{"id":"c47","type":"voltmeter","x":520,"y":180,"params":{"R":10000000},"rot":0,"label":"V1"},{"id":"c48","type":"spdt","x":364,"y":180,"params":{"pos":"b"},"rot":180,"label":"S2"}],"wires":[{"id":"c49","a":{"c":"c47","p":"a"},"b":{"c":"c48","p":"c"},"mode":"l"},{"id":"c50","a":{"c":"c48","p":"a"},"b":{"c":"c46","p":"b"},"mode":"hv"},{"id":"c51","a":{"c":"c48","p":"b"},"b":{"c":"c46","p":"a"},"mode":"hv"},{"id":"c52","a":{"c":"c46","p":"b"},"b":{"c":"c45","p":"a"},"mode":"l"},{"id":"c53","a":{"c":"c47","p":"b"},"b":{"c":"c45","p":"b"},"mode":"l"},{"id":"c54","a":{"c":"c46","p":"a"},"b":{"c":"c44","p":"p"},"mode":"vh"},{"id":"c55","a":{"c":"c45","p":"b"},"b":{"c":"c44","p":"b"},"mode":"l"},{"id":"c56","a":{"c":"c43","p":"a"},"b":{"c":"c42","p":"neg"},"mode":"l"},{"id":"c57","a":{"c":"c42","p":"pos"},"b":{"c":"c44","p":"a"},"mode":"vh"},{"id":"c58","a":{"c":"c44","p":"b"},"b":{"c":"c43","p":"b"},"mode":"l"}]}},
+  {"id":"u5","name":"限流法测电阻","desc":"限流接法 + 电阻，伏安法测电阻","data":{"components":[{"id":"c21","type":"battery","x":240,"y":580,"params":{"emf":3,"r":0.5},"rot":0,"label":"E1"},{"id":"c23","type":"rheostat","x":646,"y":580,"params":{"R":20,"pos":0.5},"rot":0,"label":"R2"},{"id":"c24","type":"switch","x":458,"y":580,"params":{"closed":true},"rot":0,"label":"S1"},{"id":"c27","type":"ammeter","x":310,"y":410,"params":{"R":0.001},"rot":0,"label":"A1"},{"id":"c28","type":"resistor","x":548,"y":410,"params":{"R":10},"rot":0,"label":"R3"},{"id":"c35","type":"voltmeter","x":550,"y":300,"params":{"R":10000000},"rot":0,"label":"V1"},{"id":"c36","type":"spdt","x":400,"y":300,"params":{"pos":"b"},"rot":180,"label":"S2"}],"wires":[{"id":"c25","a":{"c":"c21","p":"neg"},"b":{"c":"c24","p":"a"},"mode":"l"},{"id":"c26","a":{"c":"c24","p":"b"},"b":{"c":"c23","p":"a"},"mode":"l"},{"id":"c29","a":{"c":"c27","p":"a"},"b":{"c":"c21","p":"pos"},"mode":"hv"},{"id":"c30","a":{"c":"c28","p":"a"},"b":{"c":"c27","p":"b"},"mode":"l"},{"id":"c31","a":{"c":"c28","p":"b"},"b":{"c":"c23","p":"p"},"mode":"hv"},{"id":"c37","a":{"c":"c35","p":"a"},"b":{"c":"c36","p":"c"},"mode":"l"},{"id":"c38","a":{"c":"c36","p":"a"},"b":{"c":"c27","p":"b"},"mode":"hv"},{"id":"c39","a":{"c":"c36","p":"b"},"b":{"c":"c27","p":"a"},"mode":"hv"},{"id":"c40","a":{"c":"c35","p":"b"},"b":{"c":"c28","p":"b"},"mode":"hv"}]}},
+  {"id":"u6","name":"基础串联电路","desc":"电池 + 灯泡 + 电阻 + 开关，入门电路","data":{"components":[{"id":"c1","type":"battery","x":400,"y":580,"params":{"emf":3,"r":0.5},"label":"E1","rot":0},{"id":"c2","type":"bulb","x":400,"y":180,"params":{"R":6,"ratedU":1.2,"ratedP":0.25},"label":"L1","rot":0},{"id":"c3","type":"resistor","x":780,"y":180,"params":{"R":10},"label":"R1","rot":0},{"id":"c4","type":"switch","x":780,"y":580,"params":{"closed":true},"label":"S1","rot":0}],"wires":[{"id":"c5","a":{"c":"c1","p":"pos"},"b":{"c":"c2","p":"a"},"mode":"l","via":null},{"id":"c6","a":{"c":"c2","p":"b"},"b":{"c":"c3","p":"a"},"mode":"l","via":null},{"id":"c7","a":{"c":"c3","p":"b"},"b":{"c":"c4","p":"b"},"mode":"l","via":null},{"id":"c8","a":{"c":"c4","p":"a"},"b":{"c":"c1","p":"neg"},"mode":"l","via":null}]}},
+  {"id":"u7","name":"基础并联电路","desc":"灯泡与电阻并联，节点家族规整布线","data":{"components":[{"id":"c1","type":"battery","x":400,"y":580,"params":{"emf":3,"r":0.5},"label":"E1"},{"id":"c4","type":"switch","x":780,"y":580,"params":{"closed":true},"label":"S1"},{"id":"c9","type":"bulb","x":600,"y":208,"params":{"R":6,"ratedU":1.2,"ratedP":0.25},"rot":0,"label":"L1"},{"id":"c10","type":"resistor","x":600,"y":370,"params":{"R":10},"rot":0,"label":"R1"},{"id":"c13","type":"juncT","x":555,"y":290,"params":{},"rot":90},{"id":"c14","type":"juncT","x":645,"y":290,"params":{},"rot":270}],"wires":[{"id":"c8","a":{"c":"c4","p":"a"},"b":{"c":"c1","p":"neg"},"mode":"l","via":null},{"id":"c15","a":{"c":"c9","p":"b"},"b":{"c":"c14","p":"e"},"mode":"hv"},{"id":"c16","a":{"c":"c10","p":"b"},"b":{"c":"c14","p":"w"},"mode":"hv"},{"id":"c17","a":{"c":"c13","p":"w"},"b":{"c":"c9","p":"a"},"mode":"hv"},{"id":"c18","a":{"c":"c13","p":"e"},"b":{"c":"c10","p":"a"},"mode":"hv"},{"id":"c19","a":{"c":"c13","p":"s"},"b":{"c":"c1","p":"pos"},"mode":"hv"},{"id":"c20","a":{"c":"c14","p":"s"},"b":{"c":"c4","p":"b"},"mode":"hv"}]}}
 ];
 const TPL_KEY = 'circuit-user-templates-v1';
 function userTplList() {
@@ -4120,38 +3978,41 @@ let tplManage = false;
 function renderTplDialog() {
   const del = tplDelList();
   $('#tplRestoreAll').style.display = (tplManage && del.length) ? '' : 'none';
+  // 内置模板
   const bi = $('#tplBuiltin'); bi.innerHTML = '';
   TEMPLATES.forEach(t => {
     const isDel = del.includes(t.id);
-    if (isDel && !tplManage) return;   // 普通模式下已删除的内置模板不显示
+    if (isDel && !tplManage) return;   // 普通模式下已隐藏的内置模板不显示
     const card = document.createElement('div');
     card.className = 'tpl-card' + (isDel ? ' tpl-hidden' : '');
-    card.innerHTML = `<b>${t.name}${isDel ? '（已删除）' : ''}</b><span>${t.desc}</span>`;
+    card.innerHTML = `<b>${t.name}${isDel ? '（已隐藏）' : ''}</b><span>${t.desc}</span>`;
     const btn = document.createElement('button');
     if (tplManage) {
       if (isDel) {
-        btn.className = 'btn';
-        btn.textContent = '恢复';
+        btn.className = 'btn'; btn.textContent = '恢复';
         btn.onclick = () => { const d = tplDelList(); const i = d.indexOf(t.id); if (i >= 0) d.splice(i, 1); tplDelWrite(d); renderTplDialog(); };
       } else {
-        btn.className = 'tpl-del';
-        btn.textContent = '删除';
+        btn.className = 'tpl-del'; btn.textContent = '隐藏';
         btn.onclick = () => {
-          if (!confirm('确定删除内置模板「' + t.name + '」？可随时在管理模式恢复。')) return;
+          if (!confirm('确定隐藏内置模板「' + t.name + '」？可随时在管理模式恢复。')) return;
           const d = tplDelList(); d.push(t.id); tplDelWrite(d); renderTplDialog();
         };
       }
     } else {
-      btn.className = 'btn';
-      btn.textContent = '载入此模板';
-      btn.onclick = () => { loadPreset(t.id); $('#tplModal').classList.remove('open'); toast('已载入模板：' + t.name); };
+      btn.className = 'btn'; btn.textContent = '载入此模板';
+      btn.onclick = () => { loadTemplateData(t); $('#tplModal').classList.remove('open'); toast('已载入模板：' + t.name); };
     }
     card.appendChild(btn);
     bi.appendChild(card);
   });
+  // 我的模板（后期新加）
   const uu = $('#tplUser'); uu.innerHTML = '';
-  const list = userTplList();
-  if (!list.length) { uu.innerHTML = '<span style="font-size:12px;color:#9aa8bd">还没有保存的模板——把画布搭好后在上面的输入框命名保存。</span>'; return; }
+  const builtNames = new Set(TEMPLATES.map(t => t.name));
+  const list = userTplList().filter(t => !builtNames.has(t.name));
+  if (!list.length) {
+    uu.innerHTML = '<span style="font-size:12px;color:#9aa8bd">还没有保存的模板——把画布搭好后在上面的输入框命名保存。</span>';
+    return;
+  }
   list.forEach((t, i) => {
     const card = document.createElement('div');
     card.className = 'tpl-card';
@@ -4171,14 +4032,15 @@ function renderTplDialog() {
     del.className = 'tpl-del'; del.textContent = '删除';
     del.onclick = () => {
       if (!confirm('确定删除模板「' + t.name + '」？此操作不可撤销。')) return;
-      const all = userTplList(); all.splice(i, 1); userTplWrite(all);
-      renderTplDialog(); toast('已删除模板：' + t.name);
+      const all = userTplList(); const idx = all.indexOf(t); if (idx >= 0) all.splice(idx, 1);
+      userTplWrite(all); renderTplDialog(); toast('已删除模板：' + t.name);
     };
     row.appendChild(btn); row.appendChild(del);
     card.appendChild(row);
     uu.appendChild(card);
   });
 }
+
 $('#btnTemplates').onclick = () => { renderTplDialog(); $('#tplModal').classList.add('open'); };
 $('#tplManage').onclick = () => { tplManage = !tplManage; $('#tplManage').textContent = tplManage ? '完成管理' : '管理模板'; renderTplDialog(); };
 $('#tplRestoreAll').onclick = () => { tplDelWrite([]); renderTplDialog(); toast('已恢复全部内置模板'); };
@@ -4186,6 +4048,7 @@ $('#tplClose').onclick = () => $('#tplModal').classList.remove('open');
 $('#tplSave').onclick = () => {
   const name = ($('#tplName').value || '').trim() || ('我的模板 ' + new Date().toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }));
   if (!state.components.length) { toast('画布是空的，先搭一个电路'); return; }
+  if (TEMPLATES.some(t => t.name === name) || userTplList().some(t => t.name === name)) { toast('已有同名模板，请换个名字'); return; }
   const list = userTplList();
   list.unshift({ name, time: new Date().toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }), n: state.components.length, w: state.wires.length, data: JSON.parse(snapshot()) });
   userTplWrite(list);
@@ -4210,7 +4073,7 @@ const GUIDE_STEPS = [
   { target: '.topbar', title: '④ 顶部：模板库、测量工具与仿真',
     body: '<b>模板库</b>里有 12 个现成电路（不好用的可在管理模式删除）；<b>测量工具</b>含卡尺、千分尺（支持零误差）、多用电表（旋钮选档）与改装电表；点 <b>▶ 暂态仿真</b>进入时间轴模式，配合<b>示波器</b>看波形、做<b>扫频分析</b>。' },
   { target: null, title: '⑤ 准备好了！',
-    body: '建议先点「模板库」载入「串联电路」试一试；电路会自动暂存在浏览器里，重要作品用<b>保存</b>导出 JSON 备份。本引导可随时点顶栏「新手引导」重看。<br><br>祝上课顺利！' }
+    body: '建议先点「模板库」载入「基础串联电路」试一试；电路会自动暂存在浏览器里，重要作品用<b>保存</b>导出 JSON 备份。本引导可随时点顶栏「新手引导」重看。<br><br>祝上课顺利！' }
 ];
 let guideIdx = -1;
 function guideStart(i = 0) { guideIdx = Math.max(0, Math.min(i, GUIDE_STEPS.length - 1)); guideRender(); }
@@ -4434,7 +4297,7 @@ function initExp() {
 buildGrid();
 initTools();
 initExp();
-loadPreset('series', false);
+loadStartupCircuit(false);
 $('#btnGuide').onclick = () => guideStart(0);
 function setProjector(on) {
   document.body.classList.toggle('projector', !!on);
@@ -4442,7 +4305,7 @@ function setProjector(on) {
   try { localStorage.setItem('circuit-projector-v1', on ? '1' : '0'); } catch (e) {}
 }
 $('#btnProjector').onclick = () => setProjector(!document.body.classList.contains('projector'));
-window.__demo = { loadPreset, state, solve, refresh, doUndo, doRedo, history, sim, simStep, simReset, runSweep, rlcParams, sweepParams, guideStart, guideStop,
+window.__demo = { TEMPLATES, loadStartupCircuit, loadTemplateData, state, solve, refresh, doUndo, doRedo, history, sim, simStep, simReset, runSweep, rlcParams, sweepParams, guideStart, guideStop,
   expCapture, expFit, expRowsGet: () => expRows, expClearAll: () => { expRows = []; expSave(); expRender(); }, setProjector };
 // 首次打开：自动弹出操作引导；投影模式记忆
 try { if (!localStorage.getItem(GUIDE_KEY)) setTimeout(() => { guideStart(0); }, 600); } catch (e) {}

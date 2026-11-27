@@ -1,4 +1,5 @@
 # 工作区临时文件
+.workbuddy/
 .zwork/
 *.zwork/
 .tmp_check.js
