@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>电路可视化 · v1.9 演示</title>
+<title>电路可视化 · v1.10 演示</title>
 <style>
   :root{
     --bg:#eef1f6; --panel:#ffffff; --line:#dde4ee; --text:#1b2536; --muted:#6b7a90;
@@ -243,7 +243,7 @@
 <body>
 <div class="app">
   <header class="topbar">
-    <div class="brand"><h1>电路可视化</h1><span>v1.9</span></div>
+    <div class="brand"><h1>电路可视化</h1><span>v1.10</span></div>
     <div class="spacer"></div>
     <div class="btn-group">
     <div class="sep"></div>
@@ -703,6 +703,21 @@ const DEFS = {
       { id: 'n', x: 0, y: -24 },
       { id: 's', x: 0, y: 24 }
     ]
+  },
+  juncT: {
+    name: 'T形节点', w: 60, h: 60,
+    params: {},
+    pins: [{ id: 'e', x: 24, y: 0 }, { id: 'w', x: -24, y: 0 }, { id: 's', x: 0, y: 24 }]
+  },
+  juncL: {
+    name: 'L形节点', w: 60, h: 60,
+    params: {},
+    pins: [{ id: 'e', x: 24, y: 0 }, { id: 's', x: 0, y: 24 }]
+  },
+  junc1: {
+    name: '一字节点', w: 60, h: 60,
+    params: {},
+    pins: [{ id: 'e', x: 24, y: 0 }, { id: 'w', x: -24, y: 0 }]
   }
 };
 
@@ -1156,6 +1171,25 @@ function drawBody(c, g, scale = 1) {
       add('line', { x1: 0, y1: 0, x2: -24, y2: 0 });
       add('line', { x1: 0, y1: 0, x2: 0, y2: -24 });
       add('line', { x1: 0, y1: 0, x2: 0, y2: 24 });
+      add('circle', { cx: 0, cy: 0, r: 3.4, fill: '#334155', stroke: 'none' });
+      break;
+    }
+    case 'juncT': {
+      // T 形节点：横向直通 + 向下分支（旋转可换分支朝向）
+      add('line', { x1: -24, y1: 0, x2: 24, y2: 0, 'stroke-width': 3 });
+      add('line', { x1: 0, y1: 0, x2: 0, y2: 24, 'stroke-width': 3 });
+      add('circle', { cx: 0, cy: 0, r: 3.4, fill: '#334155', stroke: 'none' });
+      break;
+    }
+    case 'juncL': {
+      // L 形节点：直角转弯（旋转可换转角朝向）
+      add('line', { x1: 24, y1: 0, x2: 0, y2: 0, 'stroke-width': 3 });
+      add('line', { x1: 0, y1: 0, x2: 0, y2: 24, 'stroke-width': 3 });
+      break;
+    }
+    case 'junc1': {
+      // 一字形节点：同一直线上的两接线柱（可旋转成竖直）
+      add('line', { x1: -24, y1: 0, x2: 24, y2: 0, 'stroke-width': 3 });
       add('circle', { cx: 0, cy: 0, r: 3.4, fill: '#334155', stroke: 'none' });
       break;
     }
@@ -1642,8 +1676,8 @@ function solvePass(t, dt, simulating) {
       stampG(nInt, nPos, 1 / Math.max(1e-9, c.params.r));
       return;
     }
-    // 多端/特殊元件单独处理，不能走二端逻辑
-    if (c.type === 'rheostat' || c.type === 'spdt' || c.type === 'dpdt' || c.type === 'motor' || c.type === 'junc' || c.type === 'relay' || c.type === 'idealAmmeter') return;
+    // 多端/特殊元件单独处理，不能走二端逻辑（含导线节点家族 junc*/）
+    if (c.type === 'rheostat' || c.type === 'spdt' || c.type === 'dpdt' || c.type === 'motor' || c.type.startsWith('junc') || c.type === 'relay' || c.type === 'idealAmmeter') return;
     const na = nodeIdx.get(c.id + ':' + d.pins[0].id);
     const nb = nodeIdx.get(c.id + ':' + d.pins[1].id);
     let g, inj = 0;   // inj：诺顿等效电流源（从 a 注入，抵消导通压降 / 维持电感电流）
@@ -1720,11 +1754,11 @@ function solvePass(t, dt, simulating) {
     if (ib >= 0) z[ib] -= E / R;
   });
 
-  // ---- 导线节点：所有引脚电气上短接（内部用 1e-9Ω 互连，近似理想导线）----
+  // ---- 导线节点家族（十字/T/L/一字）：所有引脚电气上短接（内部用 1e-9Ω 互连，近似理想导线）----
   comps.forEach(c => {
-    if (c.type !== 'junc') return;
+    if (!c.type.startsWith('junc')) return;
     const ref = nodeIdx.get(c.id + ':e');
-    DEFS.junc.pins.forEach(p => {
+    DEFS[c.type].pins.forEach(p => {
       if (p.id === 'e') return;
       stampG(ref, nodeIdx.get(c.id + ':' + p.id), 1 / 1e-9);
     });
@@ -1805,8 +1839,8 @@ function solvePass(t, dt, simulating) {
       compCurrent[c.id] = { U, I, P: U * I, diode: { on: !!c._nl, vf: Number(c.params.vf) || 0.7, ron } };
       return;
     }
-    // 导线节点：纯连接件，不进读数表
-    if (c.type === 'junc') {
+    // 导线节点家族：纯连接件，不进读数表
+    if (c.type.startsWith('junc')) {
       compCurrent[c.id] = { U: 0, I: 0, P: 0 };
       return;
     }
@@ -1984,7 +2018,7 @@ function renderPanel() {
   let html = `<div style="font-size:13px;font-weight:600;margin-bottom:9px">${d.name}
     <span style="color:#9aa8bd;font-weight:400;font-size:11px">${c.label ? c.label + ' · ' : ''}#${c.id.slice(1)}</span></div>`;
 
-  if (c.type !== 'junc') {
+  if (!c.type.startsWith('junc')) {
     html += `<div class="prop-row" style="gap:6px">
       <button class="btn" id="btnRot" style="flex:1" title="快捷键 R">↻ 旋转 90°</button>
       <button class="btn" id="btnCopy" style="flex:1" title="快捷键 Ctrl+C">复制</button>
@@ -2395,7 +2429,7 @@ function renderTable() {
   }
   readTable.innerHTML = state.components.map(c => {
     const d = DEFS[c.type];
-    if (c.type === 'junc') return '';   // 导线节点不进读数表
+    if (c.type.startsWith('junc')) return '';   // 导线节点家族不进读数表
     const r = state.result ? state.result.compCurrent[c.id] : null;
     const label = d.name + '#' + c.id.slice(1);
     if (!r) return `<tr><td>${label}</td><td>—</td><td>—</td><td>—</td></tr>`;
@@ -2788,7 +2822,7 @@ const PAL_GROUPS = [
   ['负载与控制', ['bulb', 'motor', 'relay']],
   ['半导体', ['diode', 'led']],
   ['储能', ['capacitor', 'inductor']],
-  ['连接', ['junc']]
+  ['连接', ['junc', 'juncT', 'juncL', 'junc1']]
 ];
 const PAL_TYPES = PAL_GROUPS.flatMap(g => g[1]);
 const PAL_CAT_OF = {};
@@ -2806,7 +2840,7 @@ function palItemEl(type) {
   const svg = document.createElementNS(NS, 'svg');
   const isRheo = type === 'rheostat';
   const isSpdt = type === 'spdt';
-  const isJunc = type === 'junc';
+  const isJunc = type.startsWith('junc');
   svg.setAttribute('viewBox',
     isJunc ? '-50 -28 100 56' : isSpdt ? '-50 -32 100 72' : isRheo ? '-50 -44 100 76' : '-50 -22 100 44');
   if (isRheo || isSpdt || isJunc) svg.style.height = '52px';
@@ -4163,7 +4197,7 @@ function expSave() { try { localStorage.setItem(EXP_KEY, JSON.stringify(expRows)
 function expMode() { return $('#expMode') ? $('#expMode').value : 'bulb'; }
 function expCapture() {
   const c = state.components.find(x => x.id === state.selected);
-  if (!c || c.type === 'junc') { toast('先在画布上选中要测量的元件（电阻/灯泡）或电源'); return; }
+  if (!c || c.type.startsWith('junc')) { toast('先在画布上选中要测量的元件（电阻/灯泡）或电源'); return; }
   // 采点前重解当前状态（静态重解静态、暂态重解暂态），保证读数对应当前电路参数
   if (!sim.playing) { if (sim.t > 0) solve(sim.t, sim.dt, true); else solve(); }
   const r = state.result && state.result.compCurrent[c.id];
