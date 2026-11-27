@@ -63,10 +63,11 @@
   .pal-cat:hover{background:var(--accent-soft);}
   .pal-cat.on{background:var(--accent); color:#fff; border-color:var(--accent);}
   .pal-flyout{
-    position:absolute; left:100%; top:0; width:164px;
+    position:fixed; width:168px;
     background:var(--panel); border:1px solid var(--line); border-radius:0 12px 12px 0;
-    box-shadow:8px 0 24px rgba(15,23,42,.18); padding:8px; z-index:25;
-    max-height:100%; overflow-y:auto;
+    box-shadow:10px 0 30px rgba(15,23,42,.28); padding:8px;
+    z-index:90;   /* 所有图层之上（画布/顶栏/示波器） */
+    max-height:calc(100vh - 24px); overflow-y:auto;
   }
   .pal-flyout-head{display:flex; align-items:center; justify-content:space-between; margin-bottom:6px;}
   .pal-flyout-head span{font-size:12px; font-weight:600; color:var(--text);}
@@ -168,7 +169,6 @@
     .main{flex-direction:column;}
     .palette{width:54px;}
     .palette h2,.pal-hint{display:none;}
-    .pal-flyout{top:0; max-height:100%;}
     .stage{min-height:420px; flex:0 0 auto;}
     .side{width:100%;}
     .topbar{flex-wrap:wrap; gap:8px;}
@@ -2831,7 +2831,6 @@ const PAL_SHORT = { '电源': '电源', '电阻与变阻': '电阻', '开关': '
   '负载与控制': '负载', '半导体': '半导体', '储能': '储能', '连接': '连接' };
 const paletteCats = $('#paletteCats');
 const paletteItems = $('#paletteItems');
-let palOpenCat = null;
 // 生成单个元件卡片（含拖拽/放置逻辑，v1.9 折叠栏每次展开重新生成）
 function palItemEl(type) {
   const item = document.createElement('div');
@@ -2863,14 +2862,26 @@ function palItemEl(type) {
   });
   return item;
 }
-function palOpen(name) {
+let palOpenCat = null, palLastBtn = null;
+function palPosition() {
+  const fly = $('#palFlyout');
+  if (!palLastBtn || fly.style.display === 'none') return;
+  const r = palLastBtn.getBoundingClientRect();
+  const h = fly.offsetHeight || 300;
+  const top = Math.max(8, Math.min(r.top - 4, window.innerHeight - h - 12));
+  fly.style.left = (r.right + 2) + 'px';
+  fly.style.top = top + 'px';
+}
+function palOpen(name, btn) {
   palOpenCat = name;
+  palLastBtn = btn || palLastBtn;
   const group = PAL_GROUPS.find(g2 => g2[0] === name);
   $('#palFlyoutTitle').textContent = name + '（拖到画布）';
   paletteItems.innerHTML = '';
   group[1].forEach(t => paletteItems.appendChild(palItemEl(t)));
   $('#palFlyout').style.display = 'block';
   document.querySelectorAll('.pal-cat').forEach(b => b.classList.toggle('on', b.dataset.cat === name));
+  palPosition();
 }
 function palClose() {
   palOpenCat = null;
@@ -2883,10 +2894,11 @@ PAL_GROUPS.forEach(([name]) => {
   b.dataset.cat = name;
   b.textContent = PAL_SHORT[name] || name;
   b.title = name;
-  b.onclick = () => { palOpenCat === name ? palClose() : palOpen(name); };
+  b.onclick = () => { palOpenCat === name ? palClose() : palOpen(name, b); };
   paletteCats.appendChild(b);
 });
 $('#palFlyoutClose').onclick = palClose;
+window.addEventListener('resize', () => { if (palOpenCat) palPosition(); });
 // 点击画布空白收起浮层（拖拽放置不受影响）
 canvas.addEventListener('pointerdown', () => { if (palOpenCat) palClose(); });
 
