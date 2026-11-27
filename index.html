@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>电路可视化 · v1.4 演示</title>
+<title>电路可视化 · v1.5 演示</title>
 <style>
   :root{
     --bg:#eef1f6; --panel:#ffffff; --line:#dde4ee; --text:#1b2536; --muted:#6b7a90;
@@ -32,6 +32,11 @@
     padding:6px 12px; border-radius:7px; cursor:pointer; font-size:12.5px;
     transition:all .15s; font-family:inherit;
   }
+  /* 顶栏按钮统一尺寸（v1.5） */
+  .topbar .btn{height:30px; padding:0 13px; display:inline-flex;
+    align-items:center; justify-content:center; white-space:nowrap;}
+  #scopePanel .btn{height:28px; padding:0 12px; display:inline-flex;
+    align-items:center; justify-content:center; white-space:nowrap;}
   .btn:hover{border-color:#b9c6da; background:#f8fafc;}
   .btn.primary{background:var(--accent); border-color:var(--accent); color:#fff;}
   .btn.primary:hover{background:#1d4ed8;}
@@ -61,6 +66,10 @@
   .pal-item svg{width:88px; height:34px; overflow:visible;}
   .pal-item span{font-size:11.5px; color:var(--text);}
   #paletteItems{display:flex; flex-direction:column; gap:6px;}
+  /* 元件库分类标题（v1.5） */
+  .pal-cat{font-size:10.5px; color:var(--muted); margin:10px 4px 0;
+    font-weight:600; letter-spacing:1px;}
+  #paletteItems > .pal-cat:first-child{margin-top:0;}
   .pal-hint{font-size:11px; color:var(--muted); line-height:1.6; padding:8px 6px;
     border-top:1px solid var(--line); margin-top:auto;}
 
@@ -149,6 +158,7 @@
     .palette{width:100%; flex-direction:row; overflow-x:auto;
       border-right:none; border-bottom:1px solid var(--line); padding:8px; gap:4px;}
     .palette h2,.pal-hint{display:none;}
+    .pal-cat{display:none;}
     #paletteItems{flex-direction:row; gap:2px;}
     .pal-item{flex:0 0 auto; padding:6px 6px;}
     .pal-item svg{width:76px;}
@@ -191,22 +201,9 @@
 <body>
 <div class="app">
   <header class="topbar">
-    <div class="brand"><h1>电路可视化</h1><span>v1.4</span></div>
+    <div class="brand"><h1>电路可视化</h1><span>v1.5</span></div>
     <div class="spacer"></div>
     <div class="btn-group">
-      <button class="btn" id="btnSeries">示例：串联</button>
-      <button class="btn" id="btnParallel">示例：并联</button>
-      <button class="btn" id="btnDivider">示例：分压</button>
-      <button class="btn" id="btnSelector">示例：切换</button>
-      <button class="btn" id="btnMotor">示例：电动机</button>
-      <button class="btn" id="btnBridge">示例：电桥</button>
-      <button class="btn" id="btnCap">示例：电容</button>
-      <button class="btn" id="btnRelay">示例：继电器</button>
-      <button class="btn" id="btnCapDis">示例：充放电</button>
-      <button class="btn" id="btnInd">示例：自感</button>
-      <button class="btn" id="btnAC">示例：交流RC</button>
-      <button class="btn" id="btnRLC">示例：RLC谐振</button>
-    </div>
     <div class="sep"></div>
     <div class="btn-group">
       <button class="btn" id="btnUndo" disabled title="Ctrl+Z">撤销</button>
@@ -298,30 +295,29 @@
               <span class="tool-fb" id="calFb"></span>
               <span class="tool-live" id="calLive"></span>
             </div>
-            <div class="tool-note">拖动右侧游标框可自由开合，观察哪条游标刻度线与主尺对齐；<b>游标卡尺读数不需要估读位</b>。读数 = 主尺整毫米 + 对齐格数 × 分度值。</div>
+            <div class="tool-note">真实卡尺由主尺、游标尺、外测量爪（测厚度/外径）、内测量爪（测内径/槽宽）、深度尺（测深度）和紧固螺钉组成。拖动右侧游标框可自由开合，观察哪条游标刻度线与主尺对齐；<b>游标卡尺读数不需要估读位</b>。读数 = 主尺整毫米 + 对齐格数 × 分度值。</div>
           </div>
           <div id="micWrap" style="display:none">
             <svg id="micSvg" viewBox="0 0 780 210" style="width:100%"></svg>
             <div class="tool-ui">
               <button class="btn" id="micRand">放入随机物体</button>
               <button class="btn" id="micTake">取出物体</button>
+              <button class="btn" id="micRezero">随机零误差</button>
+              <span class="tool-live" id="micZeroLive"></span>
+            </div>
+            <div class="tool-ui">
               <input id="micRead" placeholder="读数（mm）" disabled>
               <button class="btn" id="micCheck" disabled>检查</button>
               <button class="btn" id="micShow" disabled>显示正确读数</button>
               <span class="tool-fb" id="micFb"></span>
               <span class="tool-live" id="micLive"></span>
             </div>
-            <div class="tool-note">拖动右侧测微套筒可自由旋进旋出；读数 = 固定刻度（含半毫米）+ 可动刻度 × 0.01 mm，<b>需要估读一位</b>（到 0.001 mm），答案误差 ≤ 0.002 mm 判对。</div>
+            <div class="tool-note">拖动右侧测微套筒可自由旋进旋出。真实千分尺存在<b>零误差</b>：先测砧并拢记下初读数，测量值 = 末读数 − 初读数。读数 = 固定刻度（含半毫米）+ 可动刻度 × 0.01 mm，<b>需估读一位</b>（到 0.001 mm），答案误差 ≤ 0.002 mm 判对。</div>
           </div>
           <div id="mmWrap" style="display:none">
-            <svg id="mmSvg" viewBox="0 0 520 280" style="width:100%"></svg>
+            <svg id="mmSvg" viewBox="0 0 700 290" style="width:100%"></svg>
             <div class="tool-ui">
-              <span style="font-size:12px;color:#6b7a90">档位：</span>
-              <div class="seg" id="mmModes">
-                <button class="btn active" data-mmode="V">直流电压 2.5V</button>
-                <button class="btn" data-mmode="I">直流电流 25mA</button>
-                <button class="btn" data-mmode="R">欧姆 ×1</button>
-              </div>
+              <span style="font-size:12px;color:#6b7a90">转动面板右侧的选择开关选档位；</span>
               <button class="btn" id="mmRand">放入随机被测</button>
               <button class="btn" id="mmZero" disabled>表笔短接调零</button>
               <input id="mmRead" placeholder="读数" disabled>
@@ -329,7 +325,7 @@
               <button class="btn" id="mmShow" disabled>显示正确读数</button>
               <span class="tool-fb" id="mmFb"></span>
             </div>
-            <div class="tool-note" id="mmNote">电压/电流档刻度均匀（0–50 格）；欧姆档刻度不均匀且 0Ω 在右端，<b>使用前必须短接调零</b>；欧姆读数 = 中值电阻 × (50−格数)/格数。</div>
+            <div class="tool-note" id="mmNote">电压/电流档刻度均匀（0–50 格）；欧姆档刻度不均匀且 0Ω 在右端，<b>换到欧姆档后必须短接调零</b>；欧姆读数 = 标尺读数 × 倍率。选择开关转到 OFF 时内部电源断开。</div>
           </div>
           <div id="convWrap" style="display:none">
             <svg id="convSvg" viewBox="0 0 520 240" style="width:100%"></svg>
@@ -347,7 +343,7 @@
               <input id="cvRange" type="number" value="3" min="0.5" max="15" step="0.5" style="width:64px">
             </div>
             <div class="tool-ui">
-              <span id="cvTestL" style="font-size:12.5px">被测电压：</span>
+              <span id="cvTestL" style="font-size:12.5px">输入电压：</span>
               <input type="range" id="cvTest" min="0" max="3" step="0.01" value="1.5" style="flex:1">
               <span class="tool-live" id="cvLive"></span>
             </div>
@@ -366,22 +362,29 @@
           <div class="tpl-row">
             <input id="tplName" placeholder="模板名称（保存当前画布用）">
             <button class="btn" id="tplSave">💾 保存当前画布为模板</button>
+            <button class="btn" id="tplRestoreAll" style="display:none">恢复全部内置模板</button>
             <button class="btn" id="tplManage">管理模板</button>
           </div>
-          <h3>内置模板（载入后可随意修改）</h3>
+          <h3>内置模板（载入后可随意修改；不好用的可在管理模式删除）</h3>
           <div class="tpl-grid" id="tplBuiltin"></div>
           <h3>我的模板</h3>
           <div class="tpl-grid" id="tplUser"></div>
         </div>
       </div>
 
-      <div id="scopePanel" style="display:none;position:absolute;left:0;right:0;bottom:0;height:190px;background:#0b1220;border-top:2px solid var(--accent);z-index:30;">
+      <div id="scopePanel" style="display:none;position:absolute;left:0;right:0;bottom:0;height:300px;background:#0b1220;border-top:2px solid var(--accent);z-index:30;">
+        <div id="scopeResize" title="拖拽调整示波器高度"></div>
         <div style="display:flex;gap:10px;align-items:center;padding:5px 10px;flex-wrap:wrap;">
           <span style="font-size:12px;color:#94a3b8">示波器（暂态仿真时自动记录）：</span>
           <select id="scopeSel" style="flex:1;min-width:130px;padding:4px 6px;border:1px solid #334155;border-radius:8px;background:#1e293b;color:#e2e8f0;font-family:inherit"></select>
           <span style="font-size:12px;color:#94a3b8">模式</span>
-          <button class="btn" id="btnModeScan" style="padding:4px 10px">扫描</button>
-          <button class="btn" id="btnModeScroll" style="padding:4px 10px">滚动</button>
+          <button class="btn" id="btnModeScan">扫描</button>
+          <button class="btn" id="btnModeScroll">滚动</button>
+          <span style="font-size:12px;color:#94a3b8">滚动方向</span>
+          <select id="scrollDirSel" style="padding:4px 6px;border:1px solid #334155;border-radius:8px;background:#1e293b;color:#e2e8f0;font-family:inherit">
+            <option value="left" selected>向左（最新在右）</option>
+            <option value="right">向右（最新在左）</option>
+          </select>
           <span style="font-size:12px;color:#94a3b8">时基</span>
           <select id="timebaseSel" style="padding:4px 6px;border:1px solid #334155;border-radius:8px;background:#1e293b;color:#e2e8f0;font-family:inherit">
             <option value="auto" selected>自动</option>
@@ -398,11 +401,11 @@
           <span style="font-size:12px;color:#94a3b8">→</span>
           <input id="sweepF2" type="number" value="150" min="0.2" step="1" style="width:56px;padding:4px 6px;border:1px solid #334155;border-radius:8px;background:#1e293b;color:#e2e8f0;font-family:inherit">
           <span style="font-size:12px;color:#94a3b8">Hz</span>
-          <button class="btn" id="btnSweep" style="padding:4px 12px">扫频分析</button>
-          <button class="btn" id="btnWave" style="padding:4px 12px;display:none">返回波形</button>
+          <button class="btn" id="btnSweep">扫频分析</button>
+          <button class="btn" id="btnWave" style="display:none">返回波形</button>
           <span id="scopeInfo" style="font-size:12px;color:#94a3b8"></span>
         </div>
-        <canvas id="scopeCanvas" height="140" style="width:100%;height:140px;display:block"></canvas>
+        <canvas id="scopeCanvas" height="250" style="width:100%;height:250px;display:block"></canvas>
       </div>
     </section>
 
@@ -2556,9 +2559,30 @@ window.addEventListener('keydown', evt => {
   }
 });
 
-/* ---- 元件库拖拽 ---- */
+/* ---- 元件库拖拽（v1.5：按类别分组） ---- */
+const PAL_GROUPS = [
+  ['电源', ['battery', 'acsource']],
+  ['电阻与变阻', ['resistor', 'resbox', 'metalwire', 'rheostat', 'thermistor', 'photoresistor']],
+  ['开关', ['switch', 'spdt', 'dpdt']],
+  ['电表', ['ammeter', 'voltmeter', 'galvanometer', 'idealAmmeter', 'idealVoltmeter']],
+  ['负载与控制', ['bulb', 'motor', 'relay']],
+  ['半导体', ['diode', 'led']],
+  ['储能', ['capacitor', 'inductor']],
+  ['连接', ['junc']]
+];
+const PAL_TYPES = PAL_GROUPS.flatMap(g => g[1]);
+const PAL_CAT_OF = {};
+PAL_GROUPS.forEach(([name, types]) => types.forEach(t => { PAL_CAT_OF[t] = name; }));
 const paletteItems = $('#paletteItems');
-Object.keys(DEFS).forEach(type => {
+let lastPalCat = null;
+PAL_TYPES.forEach(type => {
+  if (PAL_CAT_OF[type] !== lastPalCat) {
+    lastPalCat = PAL_CAT_OF[type];
+    const h = document.createElement('div');
+    h.className = 'pal-cat';
+    h.textContent = lastPalCat;
+    paletteItems.appendChild(h);
+  }
   const item = document.createElement('div');
   item.className = 'pal-item';
   item.dataset.type = type;
@@ -2599,18 +2623,6 @@ $('#btnClear').onclick = () => {
   toast('已清空');
 };
 
-$('#btnSeries').onclick = () => loadPreset('series');
-$('#btnParallel').onclick = () => loadPreset('parallel');
-$('#btnDivider').onclick = () => loadPreset('divider');
-$('#btnSelector').onclick = () => loadPreset('selector');
-$('#btnMotor').onclick = () => loadPreset('motor');
-$('#btnBridge').onclick = () => loadPreset('bridge');
-$('#btnCap').onclick = () => loadPreset('cap');
-$('#btnRelay').onclick = () => loadPreset('relay');
-$('#btnCapDis').onclick = () => loadPreset('capdischarge');
-$('#btnInd').onclick = () => loadPreset('inductor');
-$('#btnAC').onclick = () => loadPreset('acrc');
-$('#btnRLC').onclick = () => loadPreset('rlc');
 $('#btnUndo').onclick = doUndo;
 $('#btnRedo').onclick = doRedo;
 $('#btnSave').onclick = saveCircuit;
@@ -2859,8 +2871,8 @@ function toast(msg) {
 const tools = {
   tab: 'caliper',
   cal: { n: 10, W: null, gap: 18 },   // n 分度数；W 物体宽度(null=自由模式)；gap 开口
-  mic: { W: null, L: 6.5 },            // L 测砧间距
-  mm: { mode: 'V', range: 2.5, Rmid: 15, mult: 1, target: null, zeroing: false },   // 多用电表
+  mic: { W: null, L: 6.5, zero: 0 },            // L 测砧间距；zero 零误差（v1.5）
+  mm: { mode: 'V', range: 2.5, iRange: 25, rMult: 1, Rmid: 15, target: null, zeroing: false },   // 多用电表（v1.5 旋钮选档）
   conv: { Ig: 300, Rg: 100, kind: 'V', range: 3, test: 1.5 }                          // 改装电表
 };
 const toolNS = 'http://www.w3.org/2000/svg';
@@ -2881,12 +2893,16 @@ function calCorrect(W, n) {
 
 function drawCaliper() {
   const svg = $('#calSvg'); svg.innerHTML = '';
+  const defs = document.createElementNS(toolNS, 'defs');
+  defs.innerHTML = '<linearGradient id="calSteel" x1="0" y1="0" x2="0" y2="1">'
+    + '<stop offset="0" stop-color="#f1f5f9"/><stop offset="0.5" stop-color="#cbd5e1"/><stop offset="1" stop-color="#8ea0b5"/></linearGradient>';
+  svg.appendChild(defs);
   const st = tools.cal, s = 6, x0 = 60, n = st.n;
   const gap = st.W != null ? st.W : st.gap;
   const xJaw = x0 + gap * s;
-  // 尺身
-  svg.appendChild(tEl('rect', { x: x0 - 16, y: 60, width: 300, height: 24, fill: '#e2e8f0', stroke: '#334155', rx: 2 }));
-  svg.appendChild(tEl('rect', { x: x0 - 16, y: 88, width: 620, height: 26, fill: '#fff', stroke: '#334155', rx: 2 }));
+  // 尺身（金属渐变，v1.5）
+  svg.appendChild(tEl('rect', { x: x0 - 16, y: 60, width: 300, height: 24, fill: 'url(#calSteel)', stroke: '#334155', rx: 2 }));
+  svg.appendChild(tEl('rect', { x: x0 - 16, y: 88, width: 620, height: 26, fill: 'url(#calSteel)', stroke: '#334155', rx: 2 }));
   // 主尺刻度（每 1mm，每 10mm 标数字）
   for (let m = 0; m <= 100; m++) {
     const x = x0 + m * s;
@@ -2903,6 +2919,13 @@ function drawCaliper() {
   const vLen = (n - 1) * s;
   svg.appendChild(tEl('rect', { x: xJaw - 14, y: 60, width: vLen + 34, height: 102, fill: 'rgba(59,130,246,.08)', stroke: '#60a5fa', rx: 4 }));
   svg.appendChild(tEl('rect', { x: xJaw - 14, y: 60, width: 16, height: 102, fill: '#93c5fd', stroke: '#3b82f6', rx: 3, class: 'tool-drag' }));
+  // 紧固螺钉（v1.5 结构细节）
+  svg.appendChild(tEl('circle', { cx: xJaw + vLen / 2 + 3, cy: 68, r: 5, fill: '#64748b', stroke: '#1e293b', 'stroke-width': 1.2 }));
+  svg.appendChild(tEl('line', { x1: xJaw + vLen / 2 + 3 - 3, y1: 68, x2: xJaw + vLen / 2 + 3 + 3, y2: 68, stroke: '#e2e8f0', 'stroke-width': 1.2 }));
+  // 结构标注（v1.5）
+  tText(svg, '主尺', { x: x0 + 4, y: 54, 'font-size': 9, fill: '#9aa8bd' });
+  tText(svg, '游标尺', { x: xJaw + vLen / 2, y: 158, 'text-anchor': 'middle', 'font-size': 9, fill: '#9aa8bd' });
+  tText(svg, '外测量爪', { x: xJaw - 6, y: 172, 'text-anchor': 'middle', 'font-size': 9, fill: '#9aa8bd' });
   // 游标副尺
   svg.appendChild(tEl('rect', { x: xJaw - 2, y: 106, width: vLen + 8, height: 24, fill: '#dbeafe', stroke: '#3b82f6', rx: 2 }));
   const f = gap - Math.floor(gap);
@@ -2917,7 +2940,7 @@ function drawCaliper() {
   const M = Math.floor(gap);
   svg.appendChild(tEl('line', { x1: x0 + (M + k) * s, y1: 88, x2: x0 + (M + k) * s, y2: 130, stroke: '#dc2626', 'stroke-width': 1.2, opacity: 0.75 }));
   const live = $('#calLive');
-  if (live) live.textContent = st.W != null ? '测物体中…' : '当前开口：' + gap.toFixed(n === 10 ? 1 : 2) + ' mm';
+  if (live) live.textContent = st.W != null ? '测物体中…' : '当前开口：' + gap.toFixed(n === 10 ? 1 : 2) + ' mm（拖动游标可自由开合）';
 }
 
 function micMainOf(L) { return Math.floor(L * 2 + 1e-9) / 2; }
@@ -2925,7 +2948,8 @@ function drawMicrometer() {
   const svg = $('#micSvg'); svg.innerHTML = '';
   const st = tools.mic, s = 24, zx = 90;
   const L = st.W != null ? st.W : st.L;
-  const xEdge = zx + L * s;
+  const zero = st.zero || 0;
+  const xEdge = zx + L * s;   // 测微螺杆位置只由物理开口决定；零误差体现在鼓轮刻度偏转
   // 尺架与砧座
   svg.appendChild(tEl('rect', { x: 34, y: 108, width: 36, height: 48, fill: '#94a3b8', stroke: '#475569', rx: 4 }));
   // 测微螺杆
@@ -2946,7 +2970,7 @@ function drawMicrometer() {
   svg.appendChild(tEl('line', { x1: 60, y1: 130, x2: xEdge + 112, y2: 130, stroke: '#334155', 'stroke-width': 1.2 }));
   // 可动刻度套筒（可拖）
   svg.appendChild(tEl('rect', { x: xEdge, y: 104, width: 112, height: 50, fill: '#e2e8f0', stroke: '#334155', rx: 5, class: 'tool-drag' }));
-  const T = (L * 100) % 50;
+  const T = ((L + zero) * 100) % 50;   // 鼓轮读数含零误差：并拢时初读数 = 零误差
   for (let j = Math.floor(T) - 1; j <= Math.floor(T) + 14; j++) {
     const x = xEdge + 9 + (j - T) * 7;
     if (x < xEdge + 4 || x > xEdge + 106) continue;
@@ -2957,7 +2981,11 @@ function drawMicrometer() {
   // 读数指示线
   svg.appendChild(tEl('line', { x1: xEdge + 9, y1: 110, x2: xEdge + 9, y2: 150, stroke: '#dc2626', 'stroke-width': 1.6 }));
   const live = $('#micLive');
-  if (live) live.textContent = st.W != null ? '测物体中…' : '当前测砧间距：' + L.toFixed(3) + ' mm';
+  if (live) live.textContent = st.W != null
+    ? `测物体中…（末读数含零误差 ${zero >= 0 ? '+' : ''}${zero.toFixed(3)} mm）`
+    : `测砧并拢时的初读数（零误差）：${zero >= 0 ? '+' : ''}${zero.toFixed(3)} mm｜当前开口 ${L.toFixed(3)} mm`;
+  const zl = $('#micZeroLive');
+  if (zl) zl.textContent = `当前初读数（零误差）：${zero >= 0 ? '+' : ''}${zero.toFixed(3)} mm${zero === 0 ? '（无）' : ''}`;
 }
 
 function drawTools() { drawCaliper(); drawMicrometer(); }
@@ -3011,6 +3039,12 @@ function initTools() {
   };
 
   // 螺旋测微器
+  $('#micRezero').onclick = () => {
+    const r = Math.random();
+    tools.mic.zero = r < 0.4 ? 0 : Math.round(Math.random() * 17 + 2) * (r < 0.7 ? 1 : -1) / 1000;
+    drawMicrometer();
+    $('#micFb').textContent = '';
+  };
   $('#micRand').onclick = () => {
     tools.mic.W = Math.floor(2000 + Math.random() * 13000) / 1000;
     drawMicrometer();
@@ -3026,17 +3060,16 @@ function initTools() {
     const st = tools.mic, fb = $('#micFb');
     const u = parseFloat($('#micRead').value);
     if (!isFinite(u)) { setFb(fb, '请先输入读数', '#9aa8bd'); return; }
-    if (Math.abs(u - st.W) <= 0.002 + 1e-9) {
-      setFb(fb, `✓ 正确！物体真实长度 ${st.W} mm（估读位在 ±0.002 内均判对）`, '#16a34a');
+    if (Math.abs((u - (st.zero || 0)) - st.W) <= 0.002 + 1e-9) {
+      setFb(fb, `✓ 正确！末读数 − 初读数(${(st.zero || 0).toFixed(3)}) = 真实长度 ${st.W} mm（估读位在 ±0.002 内均判对）`, '#16a34a');
     } else {
-      const T = (st.W * 100) % 50;
-      setFb(fb, `✗ 不对。提示：固定刻度先读到 ${micMainOf(st.W)} mm，可动刻度约 ${T.toFixed(1)}，别忘了估读`, '#dc2626');
+      setFb(fb, `✗ 不对。提示：末读数 ≈ 真实值 + 初读数 = ${(st.W + (st.zero || 0)).toFixed(3)} mm，别忘了扣零误差`, '#dc2626');
     }
   };
   $('#micShow').onclick = () => {
     const st = tools.mic, T = (st.W * 100) % 50;
     setFb($('#micFb'),
-      `正确读数：固定刻度 ${micMainOf(st.W)} mm + 可动刻度 ${T.toFixed(1)} × 0.01 mm = ${st.W.toFixed(3)} mm`,
+      `末读数 ${(st.W + (st.zero || 0)).toFixed(3)} mm − 初读数 ${(st.zero || 0).toFixed(3)} mm = 真实长度 ${st.W.toFixed(3)} mm`,
       '#2563eb');
   };
 
@@ -3069,19 +3102,12 @@ function initTools() {
       drawMicrometer();
     }
   });
-  // 多用电表
-  document.querySelectorAll('#mmModes [data-mmode]').forEach(b => {
-    b.onclick = () => {
-      const m = tools.mm;
-      m.mode = b.dataset.mmode; m.target = null; m.zeroing = false;
-      document.querySelectorAll('#mmModes [data-mmode]').forEach(x => x.classList.toggle('active', x === b));
-      $('#mmRead').placeholder = m.mode === 'V' ? '读数（V）' : m.mode === 'I' ? '读数（mA）' : '读数（Ω）';
-      $('#mmRead').disabled = true; $('#mmCheck').disabled = true; $('#mmShow').disabled = true;
-      $('#mmZero').disabled = m.mode !== 'R';
-      $('#mmFb').textContent = '';
-      drawMultimeter();
-    };
+  // 多用电表（v1.5：面板选择开关旋钮选档，点击刻度盘上的档位切换）
+  $('#mmSvg').addEventListener('click', e => {
+    const g = e.target.closest('[data-mm]');
+    if (g) mmSelect(g.dataset.mm);
   });
+  syncMmUI();
   $('#mmRand').onclick = mmRand;
   $('#mmZero').onclick = () => {
     tools.mm.zeroing = true;
@@ -3094,8 +3120,8 @@ function initTools() {
     if (m.target == null) { setFb(fb, '先放入随机被测对象', '#9aa8bd'); return; }
     if (!isFinite(u)) { setFb(fb, '请输入读数', '#9aa8bd'); return; }
     let ok, tol;
-    if (m.mode === 'V') { tol = 0.05; ok = Math.abs(u - m.target) <= tol; }
-    else if (m.mode === 'I') { tol = 0.4; ok = Math.abs(u - m.target) <= tol; }
+    if (m.mode === 'V') { tol = Math.max(0.05, m.range * 0.02); ok = Math.abs(u - m.target) <= tol; }
+    else if (m.mode === 'I') { tol = Math.max(0.4, m.iRange * 0.016); ok = Math.abs(u - m.target) <= tol; }
     else { tol = Math.max(1, m.target * 0.08); ok = Math.abs(u - m.target) <= tol; }
     setFb(fb, ok ? `✓ 正确！真实值 ${mmTrueText()}` : `✗ 不对。提示：${mmHint()}`, ok ? '#16a34a' : '#dc2626');
   };
@@ -3135,26 +3161,51 @@ function initTools() {
   window.addEventListener('pointerup', () => { drag = null; });
 }
 
-/* ---- 多用电表模拟器 ---- */
+/* ---- 多用电表模拟器（v1.5：面板选择开关 + 多档位） ---- */
 function mmAngle(f) { return (-60 + 120 * Math.max(0, Math.min(1, f))) * Math.PI / 180; }
 function mmNeedleF() {
   const m = tools.mm;
+  if (m.mode === 'OFF') return 0;                            // 电源断开：指针静止
   if (m.zeroing) return 1;                                   // 调零：短接表笔指 0Ω（满偏）
   if (m.target == null) return 0;                            // 未测量：指针静止在左端
   if (m.mode === 'V') return Math.min(1, m.target / m.range);
-  if (m.mode === 'I') return Math.min(1, m.target / 25);     // target 单位 mA，量程 25mA
-  return Math.min(1, m.Rmid / (m.Rmid + m.target));          // 欧姆：f = R中/(R中+Rx)
+  if (m.mode === 'I') return Math.min(1, m.target / m.iRange);  // target 单位 mA
+  return Math.min(1, (m.Rmid * m.rMult) / (m.Rmid * m.rMult + m.target));  // 欧姆
 }
 function mmModeText() {
   const m = tools.mm;
-  if (m.mode === 'V') return '直流电压档 0–2.5 V';
-  if (m.mode === 'I') return '直流电流档 0–25 mA';
-  return '欧姆档 ×1（中值电阻 15 Ω）';
+  if (m.mode === 'OFF') return 'OFF · 内部电源断开';
+  if (m.mode === 'V') return '直流电压档 0–' + m.range + ' V';
+  if (m.mode === 'I') return '直流电流档 0–' + m.iRange + ' mA';
+  return '欧姆档 ×' + m.rMult + '（中值 ' + (m.Rmid * m.rMult) + ' Ω）';
+}
+function mmSelect(pos) {
+  const m = tools.mm;
+  if (pos === 'ZERO') {   // 点击面板上的欧姆调零旋钮
+    if (m.mode === 'R') { m.zeroing = true; drawMultimeter(); $('#mmFb').textContent = '已短接表笔调零：指针指 0 Ω（满偏）'; }
+    return;
+  }
+  m.zeroing = false; m.target = null;
+  if (pos === 'OFF') m.mode = 'OFF';
+  else { const c = pos.split(':'); m.mode = c[0];
+    if (c[0] === 'V') m.range = parseFloat(c[1]);
+    else if (c[0] === 'I') m.iRange = parseFloat(c[1]);
+    else m.rMult = parseFloat(c[1]) || 1; }
+  syncMmUI();
+  drawMultimeter();
+}
+function syncMmUI() {
+  const m = tools.mm, off = m.mode === 'OFF';
+  $('#mmRead').placeholder = off ? '电源已关' : m.mode === 'V' ? '读数（V）' : m.mode === 'I' ? '读数（mA）' : '读数（Ω）';
+  $('#mmRead').disabled = true; $('#mmCheck').disabled = true; $('#mmShow').disabled = true;
+  $('#mmRand').disabled = off;
+  $('#mmZero').disabled = off || m.mode !== 'R';
+  $('#mmFb').textContent = '';
 }
 function drawMultimeter() {
   const svg = $('#mmSvg'); svg.innerHTML = '';
   const m = tools.mm;
-  const cx = 260, cy = 244, L = 160, R1 = 148, R2 = 116;
+  const cx = 250, cy = 254, L = 160, R1 = 148, R2 = 116;
   const P = (r, f) => { const a = mmAngle(f); return { x: cx + Math.sin(a) * r, y: cy - Math.cos(a) * r }; };
   // 上弧：均匀 0–50 格（电压/电流共用）
   for (let d = 0; d <= 50; d++) {
@@ -3163,8 +3214,8 @@ function drawMultimeter() {
     svg.appendChild(tEl('line', { x1: p1.x, y1: p1.y, x2: p2.x, y2: p2.y, stroke: d % 5 === 0 ? '#1b2536' : '#64748b', 'stroke-width': d % 5 === 0 ? 1.6 : 1 }));
     if (d % 10 === 0) tText(svg, d, { x: P(R1 + 16, f).x, y: P(R1 + 16, f).y + 4, 'text-anchor': 'middle', 'font-size': 11, fill: '#1b2536' });
   }
-  tText(svg, m.mode === 'I' ? 'mA' : 'V', { x: P(R1 + 30, 0.5).x, y: P(R1 + 30, 0.5).y, 'text-anchor': 'middle', 'font-size': 12, fill: '#334155' });
-  // 下弧：欧姆刻度（非线性，右端 0Ω）
+  tText(svg, m.mode === 'I' ? 'mA' : m.mode === 'V' ? 'V' : 'Ω', { x: P(R1 + 30, 0.5).x, y: P(R1 + 30, 0.5).y, 'text-anchor': 'middle', 'font-size': 12, fill: '#334155' });
+  // 下弧：欧姆刻度（非线性，右端 0Ω，标尺为 ×1 读数）
   const ohmTicks = [[0, '0'], [5, '5'], [10, '10'], [15, '15'], [20, '20'], [30, '30'], [45, '45'], [70, '70'], [105, '105'], [200, '200'], [400, '400'], [1000, '1k'], [99999, '∞']];
   ohmTicks.forEach(([R, lab]) => {
     const f = m.Rmid / (m.Rmid + R);
@@ -3178,23 +3229,56 @@ function drawMultimeter() {
   svg.appendChild(tEl('line', { x1: tail.x, y1: tail.y, x2: tip.x, y2: tip.y, stroke: '#dc2626', 'stroke-width': 2.5, 'stroke-linecap': 'round' }));
   svg.appendChild(tEl('circle', { cx, cy, r: 5, fill: '#334155' }));
   tText(svg, mmModeText(), { x: cx, y: 24, 'text-anchor': 'middle', 'font-size': 14, fill: '#1b2536', 'font-weight': 600 });
+  // ---- 选择开关（v1.5，真实面板旋钮） ----
+  const DX = 545, DY = 168, RD = 98, RN = 30;
+  const MM_POS = ['OFF', 'V:2.5', 'V:10', 'V:50', 'I:250', 'I:25', 'R:100', 'R:10', 'R:1'];
+  const selKey = m.mode === 'OFF' ? 'OFF' : m.mode === 'V' ? 'V:' + m.range : m.mode === 'I' ? 'I:' + m.iRange : 'R:' + m.rMult;
+  const mmLabel = s => s === 'OFF' ? 'OFF' : s.startsWith('R') ? '×' + s.split(':')[1] : s.split(':')[1];
+  svg.appendChild(tEl('circle', { cx: DX, cy: DY, r: RD + 14, fill: '#f8fafc', stroke: '#334155', 'stroke-width': 1.5 }));
+  MM_POS.forEach((s, i) => {
+    const a = (-135 + i * 33.75) * Math.PI / 180;
+    const px = DX + Math.sin(a) * RD, py = DY - Math.cos(a) * RD;
+    const g = el('g', { 'data-mm': s, class: 'mm-dial-pos' });
+    g.appendChild(tEl('circle', { cx: px, cy: py, r: 17, fill: s === selKey ? '#dbeafe' : '#fff', stroke: s === selKey ? '#2563eb' : '#64748b', 'stroke-width': s === selKey ? 2 : 1.2 }));
+    tText(g, mmLabel(s), { x: px, y: py + 4, 'text-anchor': 'middle', 'font-size': s.length > 4 ? 9.5 : 11, fill: s === selKey ? '#1d4ed8' : '#334155', 'font-weight': s === selKey ? 600 : 400 });
+    svg.appendChild(g);
+  });
+  // 分区标注（参考真实面板：DCV / DCmA / Ω）
+  const zone = (ang, txt, col) => {
+    const a = ang * Math.PI / 180;
+    tText(svg, txt, { x: DX + Math.sin(a) * (RD + 26), y: DY - Math.cos(a) * (RD + 26) + 4, 'text-anchor': 'middle', 'font-size': 11, fill: col, 'font-weight': 600 });
+  };
+  zone(-78, 'DCV', '#334155'); zone(-16, 'DCmA', '#334155'); zone(78, 'Ω', '#dc2626');
+  // 旋钮本体 + 指示箭头
+  const selIdx = Math.max(0, MM_POS.indexOf(selKey));
+  const aSel = (-135 + selIdx * 33.75) * Math.PI / 180;
+  svg.appendChild(tEl('circle', { cx: DX, cy: DY, r: RN, fill: '#475569', stroke: '#1e293b', 'stroke-width': 2 }));
+  svg.appendChild(tEl('line', { x1: DX, y1: DY, x2: DX + Math.sin(aSel) * (RN - 5), y2: DY - Math.cos(aSel) * (RN - 5), stroke: '#fbbf24', 'stroke-width': 4.5, 'stroke-linecap': 'round' }));
+  // 欧姆调零旋钮（点击等效「表笔短接调零」）
+  const zKnob = el('g', { 'data-mm': 'ZERO', class: 'mm-dial-pos' });
+  zKnob.appendChild(tEl('circle', { cx: DX, cy: DY + 74, r: 13, fill: '#e2e8f0', stroke: '#334155', 'stroke-width': 1.4 }));
+  zKnob.appendChild(tEl('line', { x1: DX, y1: DY + 74, x2: DX + 9, y2: DY + 65, stroke: '#1e293b', 'stroke-width': 2.4, 'stroke-linecap': 'round' }));
+  tText(zKnob, '欧姆调零', { x: DX, y: DY + 98, 'text-anchor': 'middle', 'font-size': 9.5, fill: '#64748b' });
+  svg.appendChild(zKnob);
+  tText(svg, '红表笔 → “+” 插孔，黑表笔 → “COM” 插孔', { x: DX, y: 282, 'text-anchor': 'middle', 'font-size': 9.5, fill: '#94a3b8' });
 }
 
 function mmRand() {
   const m = tools.mm;
+  if (m.mode === 'OFF') return;
   m.zeroing = false;
-  if (m.mode === 'V') m.target = +(0.3 + Math.random() * 2.1).toFixed(2);
-  else if (m.mode === 'I') m.target = +(0.5 + Math.random() * 19.5).toFixed(1);
-  else { const d = Math.round((4 + Math.random() * 42) * 2) / 2; m.target = +(15 * (50 - d) / d).toFixed(1); }
+  if (m.mode === 'V') m.target = +((0.1 + Math.random() * 0.85) * m.range).toFixed(2);
+  else if (m.mode === 'I') m.target = +((0.06 + Math.random() * 0.9) * m.iRange).toFixed(1);
+  else { const d = 5 + Math.random() * 40; m.target = Math.max(0.5, +(m.Rmid * m.rMult * (50 - d) / d).toFixed(1)); }
   drawMultimeter();
   $('#mmRead').disabled = false; $('#mmCheck').disabled = false; $('#mmShow').disabled = false;
   $('#mmRead').value = ''; $('#mmFb').textContent = '';
 }
 function mmTrueText() {
   const m = tools.mm, d = 50 * mmNeedleF();
-  if (m.mode === 'V') return `${m.target} V（指针 ${d.toFixed(1)} 格 × ${m.range / 50} V/格）`;
-  if (m.mode === 'I') return `${m.target} mA（指针 ${d.toFixed(1)} 格 × 0.5 mA/格）`;
-  return `${m.target} Ω（指针 ${d.toFixed(1)} 格：15 × ${((50 - d) / d).toFixed(2)}）`;
+  if (m.mode === 'V') return `${m.target} V（指针 ${d.toFixed(1)} 格 × ${(m.range / 50).toFixed(2)} V/格）`;
+  if (m.mode === 'I') return `${m.target} mA（指针 ${d.toFixed(1)} 格 × ${(m.iRange / 50).toFixed(2)} mA/格）`;
+  return `${m.target} Ω（指针 ${d.toFixed(1)} 格：${m.Rmid * m.rMult} × ${((50 - d) / d).toFixed(2)}）`;
 }
 
 /* ---- 改装电表实验室 ---- */
@@ -3212,10 +3296,6 @@ function drawConvert() {
   const c = tools.conv, K = convCalc();
   const wire = (x1, y1, x2, y2) => svg.appendChild(tEl('line', { x1, y1, x2, y2, stroke: '#334155', 'stroke-width': 1.6 }));
   const dot = (x, y) => svg.appendChild(tEl('circle', { cx: x, cy: y, r: 3.4, fill: '#334155' }));
-  // 被测源
-  svg.appendChild(tEl('circle', { cx: 70, cy: 115, r: 27, fill: '#fff', stroke: '#334155', 'stroke-width': 1.6 }));
-  tText(svg, c.kind === 'V' ? 'Ux' : 'Ix', { x: 70, y: 112, 'text-anchor': 'middle', 'font-size': 12, fill: '#1b2536' });
-  tText(svg, (c.kind === 'V' ? c.test.toFixed(2) + ' V' : c.test.toFixed(2) + ' A'), { x: 70, y: 128, 'text-anchor': 'middle', 'font-size': 10, fill: '#dc2626' });
   // 表头 G（带迷你指针）
   const gCircle = (x, y) => {
     svg.appendChild(tEl('circle', { cx: x, cy: y, r: 24, fill: '#fff', stroke: '#334155', 'stroke-width': 1.6 }));
@@ -3228,35 +3308,38 @@ function drawConvert() {
     tText(svg, lab, { x, y: y - 2, 'text-anchor': 'middle', 'font-size': 10, fill: '#1b2536' });
     tText(svg, fmtR(K.R), { x, y: y + 11, 'text-anchor': 'middle', 'font-size': 9.5, fill: '#6b7a90' });
   };
+  // 端钮（改装后的表只剩两个接线柱）
+  const terminal = (x, y, sgn) => {
+    svg.appendChild(tEl('circle', { cx: x, cy: y, r: 8, fill: '#fff', stroke: '#334155', 'stroke-width': 1.6 }));
+    tText(svg, sgn, { x, y: y + 4, 'text-anchor': 'middle', 'font-size': 12, fill: sgn === '+' ? '#dc2626' : '#1b2536', 'font-weight': 600 });
+  };
+  // 虚线外壳：这是“一只改装好的表”
+  svg.appendChild(tEl('rect', { x: 70, y: 28, width: 350, height: 172, fill: 'none', stroke: '#94a3b8', rx: 10, 'stroke-dasharray': '6 4' }));
   if (c.kind === 'V') {
-    // G 与 R串 联
-    wire(70, 88, 70, 40); wire(70, 40, 430, 40); wire(430, 40, 430, 150);
-    wire(430, 150, 400, 150); rBox(340, 150, 'R串'); wire(280, 150, 164, 150); gCircle(140, 150);
-    wire(116, 150, 70, 150); wire(70, 150, 70, 142); dot(70, 40); dot(70, 150);
-    tText(svg, '改装后电压表：G 与分压电阻串联', { x: 260, y: 216, 'text-anchor': 'middle', 'font-size': 11.5, fill: '#6b7a90' });
+    // 端钮+ → R串 → G → 端钮−（v1.5：不再画被测电路）
+    terminal(92, 115, '+'); wire(100, 115, 150, 115); rBox(200, 115, 'R串'); wire(250, 115, 276, 115); gCircle(300, 115); wire(324, 115, 392, 115); terminal(400, 115, '−');
+    tText(svg, '改装后电压表：G 与分压电阻串联（接入电路时并到被测两端）', { x: 260, y: 226, 'text-anchor': 'middle', 'font-size': 11.5, fill: '#6b7a90' });
   } else {
-    // G 与 R并 联
-    wire(70, 88, 70, 40); wire(70, 40, 300, 40); wire(300, 40, 300, 60);
-    wire(300, 60, 322, 60); gCircle(348, 60); wire(374, 60, 440, 60); wire(440, 60, 440, 115);
-    wire(300, 60, 300, 115);
-    wire(300, 115, 300, 190); wire(300, 190, 320, 190); rBox(370, 190, 'R并'); wire(420, 190, 440, 190); wire(440, 190, 440, 115);
-    wire(440, 115, 470, 115); wire(470, 115, 470, 190); wire(470, 190, 96, 190); wire(96, 190, 70, 190); wire(70, 190, 70, 142);
-    dot(300, 115); dot(440, 115); dot(300, 60); dot(440, 60);
-    tText(svg, '改装后电流表：G 与分流电阻并联', { x: 260, y: 216, 'text-anchor': 'middle', 'font-size': 11.5, fill: '#6b7a90' });
+    // 端钮+ → 节点 →（上 G / 下 R并）→ 节点 → 端钮−
+    terminal(92, 115, '+'); wire(100, 115, 160, 115); dot(160, 115);
+    wire(160, 115, 160, 70); wire(160, 70, 276, 70); gCircle(300, 70); wire(324, 70, 360, 70); wire(360, 70, 360, 115); dot(360, 115);
+    wire(160, 115, 160, 160); wire(160, 160, 210, 160); rBox(260, 160, 'R并'); wire(310, 160, 360, 160);
+    wire(360, 115, 392, 115); terminal(400, 115, '−');
+    tText(svg, '改装后电流表：G 与分流电阻并联（接入电路时串进被测支路）', { x: 260, y: 226, 'text-anchor': 'middle', 'font-size': 11.5, fill: '#6b7a90' });
   }
 }
 
 function fmtR(v) { return v >= 1e6 ? (v / 1e6).toFixed(2) + ' MΩ' : v >= 1000 ? (v / 1000).toFixed(2) + ' kΩ' : fmt(v) + ' Ω'; }
 function convSyncUI() {
   const c = tools.conv, K = convCalc();
-  $('#cvTestL').textContent = c.kind === 'V' ? '被测电压：' : '被测电流：';
+  $('#cvTestL').textContent = c.kind === 'V' ? '输入电压：' : '输入电流：';
   const t = $('#cvTest');
   t.max = c.range; t.step = c.range / 200;
   if (c.test > c.range) c.test = c.range;
   t.value = c.test;
-  $('#cvLive').textContent = c.kind === 'V' ? `Ux = ${c.test.toFixed(2)} V` : `Ix = ${c.test.toFixed(2)} A`;
+  $('#cvLive').textContent = c.kind === 'V' ? `输入 = ${c.test.toFixed(2)} V` : `输入 = ${c.test.toFixed(2)} A`;
   const line1 = `流过表头 G 的电流：${(K.iG * 1e6).toFixed(0)} μA（满偏 Ig = ${c.Ig} μA，偏转 ${(K.frac * 100).toFixed(0)}%）`;
-  const line2 = `改装表读数 = 偏转比例 × 量程 = ${(K.frac * c.range).toFixed(2)} ${c.kind === 'V' ? 'V' : 'A'}（真实值 ${c.test.toFixed(2)}）`;
+  const line2 = `改装表读数 = 偏转比例 × 量程 = ${(K.frac * c.range).toFixed(2)} ${c.kind === 'V' ? 'V' : 'A'}（输入 ${c.test.toFixed(2)}）`;
   const warn = K.burn > 1 ? `\n⚠ 不改装直接测：表头电流达满偏的 ${fmt(K.burn)} 倍，指针会打坏！` : '';
   $('#cvFb').textContent = line1 + '\n' + line2 + warn;
   $('#cvNote').innerHTML = c.kind === 'V'
@@ -3267,9 +3350,10 @@ function convSyncUI() {
 
 function mmHint() {
   const m = tools.mm;
-  if (m.mode === 'V') return `0–50 格均匀刻度，每格 ${m.range / 50} V`;
-  if (m.mode === 'I') return `0–50 格均匀刻度，每格 0.5 mA`;
-  return `欧姆刻度反向且非线性：Rx = 中值 15Ω × (50−格数)/格数`;
+  if (m.mode === 'OFF') return '先转动选择开关选择档位';
+  if (m.mode === 'V') return `0–50 格均匀刻度，每格 ${(m.range / 50).toFixed(2)} V`;
+  if (m.mode === 'I') return `0–50 格均匀刻度，每格 ${(m.iRange / 50).toFixed(2)} mA`;
+  return `欧姆刻度反向且非线性：Rx = 标尺读数 × 倍率 = 中值 ${m.Rmid * m.rMult}Ω × (50−格数)/格数`;
 }
 function switchToolTab(tab) {
   tools.tab = tab;
@@ -3282,7 +3366,7 @@ function setFb(el, msg, color) { el.textContent = msg; el.style.color = color; }
 /* ============================================================
    7.8 暂态仿真引擎（时间轴）与示波器
    ============================================================ */
-const sim = { playing: false, t: 0, dt: 0.0005, steps: 16, samples: [], scopeSel: '', rms: {}, view: 'scope', scopeMode: 'scan', sweep: null };
+const sim = { playing: false, t: 0, dt: 0.0005, steps: 16, samples: [], scopeSel: '', rms: {}, view: 'scope', scopeMode: 'scan', scrollDir: 'left', sweep: null };
 let simRAF = null;
 
 function simStep() {
@@ -3353,6 +3437,8 @@ function renderScope() {
   if (panel.style.display === 'none') return;
   const cv = $('#scopeCanvas');
   if (cv.width !== cv.clientWidth) cv.width = cv.clientWidth;
+  const ch = Math.max(60, Math.round(cv.clientHeight));
+  if (cv.height !== ch) cv.height = ch;
   const ctx = cv.getContext('2d');
   const W = cv.width, H = cv.height;
   ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -3365,6 +3451,7 @@ function renderScope() {
   const it = list[+($('#scopeSel').value || 0)];
   if (sim.scopeMode === 'scan') { renderScanView(ctx, W, H, it); return; }
   const win = 3;   // 时间窗口 3 秒
+  const toRight = sim.scrollDir === 'right';   // v1.5：向右滚动（最新在左，波形向右流动）
   const t0 = sim.t - win;
   const pts = sim.samples.filter(p => p.t >= t0);
   ctx.strokeStyle = '#0f766e';
@@ -3377,13 +3464,14 @@ function renderScope() {
     ctx.beginPath();
     let first = true;
     pts.forEach(p => {
-      const x = (p.t - t0) / win * W;
+      const x = toRight ? (sim.t - p.t) / win * W : (p.t - t0) / win * W;
       const y = H / 2 - (p.v / vmax) * (H / 2 - 12);
       if (first) { ctx.moveTo(x, y); first = false; } else ctx.lineTo(x, y);
     });
     ctx.stroke();
     ctx.fillStyle = '#94a3b8'; ctx.font = '12px sans-serif';
-    ctx.fillText('±' + vmax.toFixed(2) + ' ' + it.unit + '｜窗口 3 s｜' + it.label, 10, 16);
+    ctx.fillText('±' + vmax.toFixed(2) + ' ' + it.unit + '｜窗口 3 s｜' + it.label
+      + (toRight ? '｜向右滚动：左端=最新' : '｜向左滚动：右端=最新'), 10, 16);
   } else {
     ctx.fillStyle = '#94a3b8'; ctx.font = '12px sans-serif';
     ctx.fillText(it ? it.label + '（无数据）' : '——', 10, 16);
@@ -3578,14 +3666,28 @@ $('#btnWave').onclick = () => { sim.view = 'scope'; $('#btnWave').style.display 
 function setScopeMode(m) {
   sim.scopeMode = m;
   const on = 'border-color:var(--accent);color:var(--accent);font-weight:600;';
-  $('#btnModeScan').style.cssText = 'padding:4px 10px;' + (m === 'scan' ? on : '');
-  $('#btnModeScroll').style.cssText = 'padding:4px 10px;' + (m === 'scroll' ? on : '');
+  $('#btnModeScan').style.cssText = m === 'scan' ? on : '';
+  $('#btnModeScroll').style.cssText = m === 'scroll' ? on : '';
   renderScope();
 }
 setScopeMode('scan');
 $('#btnModeScan').onclick = () => setScopeMode('scan');
 $('#btnModeScroll').onclick = () => setScopeMode('scroll');
 $('#timebaseSel').onchange = () => { if (sim.scopeMode === 'scan') renderScope(); };
+$('#scrollDirSel').onchange = () => { sim.scrollDir = $('#scrollDirSel').value; if (sim.scopeMode === 'scroll') renderScope(); };
+(function () {   // 拖拽示波器顶边调整高度（v1.5）
+  const handle = $('#scopeResize'), panel = $('#scopePanel'), cv = $('#scopeCanvas');
+  let sy = 0, sh = 0, on = false;
+  handle.addEventListener('pointerdown', e => { on = true; sy = e.clientY; sh = panel.offsetHeight; e.preventDefault(); });
+  window.addEventListener('pointermove', e => {
+    if (!on) return;
+    const h = clamp(sh + (sy - e.clientY), 190, 560);
+    panel.style.height = h + 'px';
+    cv.style.height = Math.max(120, h - 50) + 'px';
+    renderScope();
+  });
+  window.addEventListener('pointerup', () => { on = false; });
+})();
 
 /* ---- 模板库 ---- */
 const TEMPLATES = [
@@ -3609,35 +3711,40 @@ function userTplList() {
 function userTplWrite(list) {
   try { localStorage.setItem(TPL_KEY, JSON.stringify(list)); } catch (e) {}
 }
-const TPL_HIDE_KEY = 'circuit-tpl-hidden-v1';
-function tplHiddenList() {
-  try { return JSON.parse(localStorage.getItem(TPL_HIDE_KEY)) || []; } catch (e) { return []; }
+const TPL_DEL_KEY = 'circuit-tpl-deleted-v1';
+function tplDelList() {
+  try { return JSON.parse(localStorage.getItem(TPL_DEL_KEY)) || []; } catch (e) { return []; }
 }
-function tplHiddenWrite(list) {
-  try { localStorage.setItem(TPL_HIDE_KEY, JSON.stringify(list)); } catch (e) {}
+function tplDelWrite(list) {
+  try { localStorage.setItem(TPL_DEL_KEY, JSON.stringify(list)); } catch (e) {}
 }
 let tplManage = false;
 function renderTplDialog() {
-  const hidden = tplHiddenList();
+  const del = tplDelList();
+  $('#tplRestoreAll').style.display = (tplManage && del.length) ? '' : 'none';
   const bi = $('#tplBuiltin'); bi.innerHTML = '';
   TEMPLATES.forEach(t => {
-    const isHidden = hidden.includes(t.id);
-    if (isHidden && !tplManage) return;   // 普通模式下隐藏的内置模板不显示
+    const isDel = del.includes(t.id);
+    if (isDel && !tplManage) return;   // 普通模式下已删除的内置模板不显示
     const card = document.createElement('div');
-    card.className = 'tpl-card' + (isHidden ? ' tpl-hidden' : '');
-    card.innerHTML = `<b>${t.name}${isHidden ? '（已隐藏）' : ''}</b><span>${t.desc}</span>`;
+    card.className = 'tpl-card' + (isDel ? ' tpl-hidden' : '');
+    card.innerHTML = `<b>${t.name}${isDel ? '（已删除）' : ''}</b><span>${t.desc}</span>`;
     const btn = document.createElement('button');
-    btn.className = 'btn';
     if (tplManage) {
-      btn.textContent = isHidden ? '恢复显示' : '隐藏（不删除）';
-      btn.onclick = () => {
-        const h = tplHiddenList();
-        if (isHidden) { const i = h.indexOf(t.id); if (i >= 0) h.splice(i, 1); }
-        else h.push(t.id);
-        tplHiddenWrite(h);
-        renderTplDialog();
-      };
+      if (isDel) {
+        btn.className = 'btn';
+        btn.textContent = '恢复';
+        btn.onclick = () => { const d = tplDelList(); const i = d.indexOf(t.id); if (i >= 0) d.splice(i, 1); tplDelWrite(d); renderTplDialog(); };
+      } else {
+        btn.className = 'tpl-del';
+        btn.textContent = '删除';
+        btn.onclick = () => {
+          if (!confirm('确定删除内置模板「' + t.name + '」？可随时在管理模式恢复。')) return;
+          const d = tplDelList(); d.push(t.id); tplDelWrite(d); renderTplDialog();
+        };
+      }
     } else {
+      btn.className = 'btn';
       btn.textContent = '载入此模板';
       btn.onclick = () => { loadPreset(t.id); $('#tplModal').classList.remove('open'); toast('已载入模板：' + t.name); };
     }
@@ -3676,6 +3783,7 @@ function renderTplDialog() {
 }
 $('#btnTemplates').onclick = () => { renderTplDialog(); $('#tplModal').classList.add('open'); };
 $('#tplManage').onclick = () => { tplManage = !tplManage; $('#tplManage').textContent = tplManage ? '完成管理' : '管理模板'; renderTplDialog(); };
+$('#tplRestoreAll').onclick = () => { tplDelWrite([]); renderTplDialog(); toast('已恢复全部内置模板'); };
 $('#tplClose').onclick = () => $('#tplModal').classList.remove('open');
 $('#tplSave').onclick = () => {
   const name = ($('#tplName').value || '').trim() || ('我的模板 ' + new Date().toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }));
